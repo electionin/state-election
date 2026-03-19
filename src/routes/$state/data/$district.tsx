@@ -42,9 +42,7 @@ export const Route = createFileRoute('/$state/data/$district')({
       }))
       .sort((a, b) => a.acNo - b.acNo)
 
-    if (rows.length === 0) {
-      throw new Error(`No elector data found for district: ${params.district}`)
-    }
+    if (rows.length === 0) throw notFound()
 
     return { config, rows } satisfies LoaderData
   },
