@@ -28,6 +28,11 @@ function RootComponent() {
     const routeStateId = normalizeStateId(location.pathname.split('/').filter(Boolean)[0] ?? null);
     const routeStateExists = routeStateId ? states.some((state) => state.id === routeStateId) : false;
     const activeStateId = routeStateExists ? routeStateId : (states[0]?.id ?? routeStateId ?? null);
+    const menuStates = useMemo(() => states.filter((state) => state.showInMenu), [states]);
+    const selectedMenuStateId =
+        activeStateId && menuStates.some((state) => state.id === activeStateId)
+            ? activeStateId
+            : (menuStates[0]?.id ?? '');
 
     useEffect(() => {
         let active = true;
@@ -154,11 +159,11 @@ function RootComponent() {
 
                     <div className="hidden md:block min-w-[220px]">
                         <select
-                            value={activeStateId ?? ''}
+                            value={selectedMenuStateId}
                             onChange={(e) => handleStateSwitch(e.target.value)}
                             className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                         >
-                            {states.map((state) => (
+                            {menuStates.map((state) => (
                                 <option key={state.id} value={state.id}>
                                     {state.name}
                                 </option>
@@ -311,11 +316,11 @@ function RootComponent() {
                         />
                         <div className="mt-2">
                             <select
-                                value={activeStateId ?? ''}
+                                value={selectedMenuStateId}
                                 onChange={(e) => handleStateSwitch(e.target.value)}
                                 className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                             >
-                                {states.map((state) => (
+                                {menuStates.map((state) => (
                                     <option key={state.id} value={state.id}>
                                         {state.name}
                                     </option>

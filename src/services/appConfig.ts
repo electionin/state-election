@@ -12,12 +12,14 @@ export type AppConfig = {
 export type StateRegistryItem = {
   id: string
   name: string
+  showInMenu: boolean
 }
 
 type StateRegistryRawItem = {
   id?: string
   code?: string
   name?: string
+  show_in_menu?: boolean
 }
 
 const DEFAULT_CONFIG: AppConfig = {
@@ -31,7 +33,7 @@ const DEFAULT_CONFIG: AppConfig = {
   ac_short_label: 'AC',
 }
 
-const DEFAULT_STATES: StateRegistryItem[] = [{ id: 'tn', name: 'Tamil Nadu' }]
+const DEFAULT_STATES: StateRegistryItem[] = [{ id: 'tn', name: 'Tamil Nadu', showInMenu: true }]
 
 export function normalizeStateId(stateId: string | null | undefined): string {
   return (stateId ?? '').trim().toLowerCase()
@@ -74,6 +76,7 @@ export async function fetchStatesRegistry(path: string = '/data/states.json'): P
       .map((s) => ({
         id: normalizeStateId(s.code ?? s.id ?? ''),
         name: (s.name ?? '').trim(),
+        showInMenu: s.show_in_menu ?? false,
       }))
       .filter((s) => s.id.length > 0 && s.name.length > 0) ?? []
   return states.length > 0 ? states : DEFAULT_STATES
