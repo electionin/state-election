@@ -1,4 +1,4 @@
-# State Election in India
+# State Election in India - 2026
 
 A multi-state, data-driven election dashboard built with React + TanStack Router.
 
