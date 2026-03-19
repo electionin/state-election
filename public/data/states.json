@@ -166,7 +166,7 @@
       "id": 19,
       "code": "WB",
       "name": "West Bengal",
-      "show_in_menu": false
+      "show_in_menu": true
     },
     {
       "id": 35,
