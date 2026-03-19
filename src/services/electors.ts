@@ -18,7 +18,7 @@ export function toInt(value: string): number {
 }
 
 export async function fetchElectorCsvRows(
-  csvPath: string = '/data/tn_ac_wise_electors.csv',
+  csvPath: string = '/data/states/tn/electors.csv',
 ): Promise<ElectorCsvRow[]> {
   const response = await fetch(csvPath)
   if (!response.ok) {

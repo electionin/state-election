@@ -1,6 +1,7 @@
-import { Link, createFileRoute } from '@tanstack/react-router'
+import { Link, createFileRoute, notFound } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
-import { fetchElectorCsvRows, toInt, type ElectorCsvRow } from '../../services/electors'
+import { fetchStateConfig, stateExists, type AppConfig } from '../../../services/appConfig'
+import { fetchElectorCsvRows, toInt, type ElectorCsvRow } from '../../../services/electors'
 
 type DistrictSummary = {
   district: string
@@ -13,6 +14,7 @@ type DistrictSummary = {
 
 type SortColumn = 'district' | 'acCount' | 'male' | 'female' | 'thirdGender' | 'totalVoters'
 type SortDirection = 'asc' | 'desc'
+type LoaderData = { config: AppConfig; districts: DistrictSummary[] }
 
 function aggregateDistrictData(rows: ElectorCsvRow[]): DistrictSummary[] {
   const districtMap = new Map<
@@ -51,16 +53,21 @@ function aggregateDistrictData(rows: ElectorCsvRow[]): DistrictSummary[] {
     .sort((a, b) => a.district.localeCompare(b.district))
 }
 
-export const Route = createFileRoute('/data/')({
-  loader: async () => {
-    const rows = await fetchElectorCsvRows()
-    return aggregateDistrictData(rows)
+export const Route = createFileRoute('/$state/data/')({
+  loader: async ({ params }) => {
+    if (!(await stateExists(params.state))) {
+      throw notFound()
+    }
+    const config = await fetchStateConfig(params.state)
+    const rows = await fetchElectorCsvRows(config.elector_csv_path)
+    return { config, districts: aggregateDistrictData(rows) } satisfies LoaderData
   },
   component: DataDashboard,
 })
 
 function DataDashboard() {
-  const districts = Route.useLoaderData()
+  const { config, districts } = Route.useLoaderData()
+  const state = config.state_id
   const [sortColumn, setSortColumn] = useState<SortColumn>('district')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const totalVoters = districts.reduce((sum, d) => sum + d.totalVoters, 0)
@@ -96,15 +103,15 @@ function DataDashboard() {
   return (
     <section className="space-y-6 select-none caret-transparent">
       <div className="space-y-1">
-        <h2 className="text-2xl font-bold text-slate-900">Tamil Nadu</h2>
+        <h2 className="text-2xl font-bold text-slate-900">{config.state_name}</h2>
         <p className="text-sm text-slate-600">
-          Overview of district-wise electors information
+          Overview of {config.district_label.toLowerCase()}-wise electors information
         </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard label="Districts" value={districts.length.toLocaleString('en-IN')} />
-        <StatCard label="No. of AC" value={totalAc.toLocaleString('en-IN')} />
+        <StatCard label={`No. of ${config.ac_short_label}`} value={totalAc.toLocaleString('en-IN')} />
         <StatCard label="Male" value={totalMale.toLocaleString('en-IN')} />
         <StatCard label="Female" value={totalFemale.toLocaleString('en-IN')} />
         <StatCard label="Third Gender" value={totalThirdGender.toLocaleString('en-IN')} />
@@ -118,14 +125,14 @@ function DataDashboard() {
               <tr>
                 <SortableHeader
                   align="left"
-                  label="District"
+                  label={config.district_label}
                   active={sortColumn === 'district'}
                   direction={sortDirection}
                   onClick={() => handleSort('district')}
                 />
                 <SortableHeader
                   align="right"
-                  label="No. of AC"
+                  label={`No. of ${config.ac_short_label}`}
                   active={sortColumn === 'acCount'}
                   direction={sortDirection}
                   onClick={() => handleSort('acCount')}
@@ -165,8 +172,8 @@ function DataDashboard() {
                 <tr key={row.district} className="border-t border-slate-100 hover:bg-slate-50/70">
                   <td className="px-4 py-3 font-medium text-slate-900">
                     <Link
-                      to="/data/$district"
-                      params={{ district: row.district }}
+                      to="/$state/data/$district"
+                      params={{ state, district: row.district }}
                       className="text-blue-700 hover:text-blue-900 hover:underline"
                     >
                       {row.district}
@@ -176,9 +183,7 @@ function DataDashboard() {
                   <td className="px-4 py-3 text-right text-slate-700">{row.male.toLocaleString('en-IN')}</td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.female.toLocaleString('en-IN')}</td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.thirdGender.toLocaleString('en-IN')}</td>
-                  <td className="px-4 py-3 text-right text-slate-700">
-                    {row.totalVoters.toLocaleString('en-IN')}
-                  </td>
+                  <td className="px-4 py-3 text-right text-slate-700">{row.totalVoters.toLocaleString('en-IN')}</td>
                 </tr>
               ))}
             </tbody>
