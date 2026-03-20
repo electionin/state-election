@@ -1,3 +1,5 @@
+import { getAppBasePath, resolvePublicAssetPath } from './url'
+
 export type AppConfig = {
   state_id: string
   state_name: string
@@ -41,7 +43,7 @@ export function normalizeStateId(stateId: string | null | undefined): string {
 
 async function fetchJson<T>(path: string): Promise<T | null> {
   try {
-    const response = await fetch(path)
+    const response = await fetch(resolvePublicAssetPath(path, getAppBasePath()))
     if (!response.ok) return null
 
     const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
@@ -102,7 +104,7 @@ export async function fetchStateConfig(stateId: string): Promise<AppConfig> {
   const configPath = `/data/states/${safeStateId}/config.json`
 
   try {
-    const response = await fetch(configPath)
+    const response = await fetch(resolvePublicAssetPath(configPath, getAppBasePath()))
     if (!response.ok) {
       return {
         ...DEFAULT_CONFIG,

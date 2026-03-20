@@ -7,10 +7,12 @@ import { Loader } from "./components/common/Loader";
 const queryClient = new QueryClient();
 
 const browserHistory = createBrowserHistory()
+const routerBasePath = import.meta.env.BASE_URL === '/' ? '/' : import.meta.env.BASE_URL.replace(/\/$/, '')
 
 const router = createRouter({
   routeTree,
   history: browserHistory,
+  basepath: routerBasePath,
   defaultPreload: 'intent',
   context: { queryClient },
   defaultNotFoundComponent: NotFound,
