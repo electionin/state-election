@@ -1,4 +1,5 @@
 import Papa from 'papaparse'
+import { getAppBasePath, resolvePublicAssetPath } from './url'
 
 export type ElectorCsvRow = {
   district_no: string
@@ -21,7 +22,7 @@ export function toInt(value: string | null | undefined): number {
 export async function fetchElectorCsvRows(
   csvPath: string = '/data/states/tn/electors.csv',
 ): Promise<ElectorCsvRow[]> {
-  const response = await fetch(csvPath)
+  const response = await fetch(resolvePublicAssetPath(csvPath, getAppBasePath()))
   if (!response.ok) {
     throw new Error(`Failed to load electors CSV (${response.status})`)
   }
