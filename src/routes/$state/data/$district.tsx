@@ -1,4 +1,4 @@
-import { Link, createFileRoute, notFound } from '@tanstack/react-router'
+import { Link, Outlet, createFileRoute, notFound, useLocation } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { fetchStateConfig, stateExists, type AppConfig } from '../../../services/appConfig'
@@ -53,6 +53,8 @@ export const Route = createFileRoute('/$state/data/$district')({
 
 function DistrictDetail() {
   const { config, rows } = Route.useLoaderData()
+  const location = useLocation()
+  const isPollingStationsPage = /\/ac\d+\/ps\/(ta|en)\/?$/.test(location.pathname)
   const state = config.state_id
   const [sortColumn, setSortColumn] = useState<SortColumn>('acNo')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
@@ -79,6 +81,10 @@ function DistrictDetail() {
     })
     return copy
   }, [rows, sortColumn, sortDirection])
+
+  if (isPollingStationsPage) {
+    return <Outlet />
+  }
 
   const handleSort = (column: SortColumn) => {
     if (column === sortColumn) {
@@ -139,6 +145,7 @@ function DistrictDetail() {
                   direction={sortDirection}
                   onClick={() => handleSort('acName')}
                 />
+                <th className="px-4 py-3 text-left font-semibold">Polling Stations</th>
                 <SortableHeader
                   label="Male"
                   align="right"
@@ -174,6 +181,24 @@ function DistrictDetail() {
                 <tr key={`${row.districtNo}-${row.acNo}`} className="border-t border-slate-100 hover:bg-slate-50/70">
                   <td className="px-4 py-3 text-slate-700">{row.acNo}</td>
                   <td className="px-4 py-3 font-medium text-slate-900">{row.acName}</td>
+                  <td className="px-4 py-3 text-slate-700">
+                    <div className="flex items-center gap-3">
+                      <Link
+                        to="/$state/data/$district/$acCode/ps/$lang"
+                        params={{ state, district, acCode: `ac${row.acNo}`, lang: 'ta' }}
+                        className="text-blue-700 hover:text-blue-900 hover:underline"
+                      >
+                        TA
+                      </Link>
+                      <Link
+                        to="/$state/data/$district/$acCode/ps/$lang"
+                        params={{ state, district, acCode: `ac${row.acNo}`, lang: 'en' }}
+                        className="text-blue-700 hover:text-blue-900 hover:underline"
+                      >
+                        EN
+                      </Link>
+                    </div>
+                  </td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.male.toLocaleString('en-IN')}</td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.female.toLocaleString('en-IN')}</td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.thirdGender.toLocaleString('en-IN')}</td>
