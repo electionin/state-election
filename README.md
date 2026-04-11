@@ -8,6 +8,7 @@ This app is designed to serve election elector summaries for various Indian stat
 - State-aware routing (`/:state/...`) using lowercase state codes
 - District-wise dashboard with sortable columns
 - District drilldown (`/:state/data/:district`) with AC-wise details
+- Polling station drilldown (`/:state/data/:district/:acCode/ps/:lang`) for AC-level TA/EN views
 - Header search by district name, AC name, and AC number
 - State switcher menu controlled by `show_in_menu`
 - Strict NotFound handling for invalid states/districts
@@ -28,10 +29,13 @@ src/
     index.tsx
     $state/data/index.tsx
     $state/data/$district.tsx
+    $state/data/$district/$acCode/ps/$lang.tsx
     $state/map.tsx
   services/
     appConfig.ts
     electors.ts
+    pollingStations.ts
+    pollingStationsView.ts
   components/common/
 
 public/data/
@@ -39,6 +43,9 @@ public/data/
   states/<state_code>/
     config.json
     electors.csv
+    polling-stations/<acCode>/
+      polling_stations.csv
+      polling_stations_en.csv
 
 scripts/
   scrape_<state>_ac_electors.py
@@ -79,6 +86,18 @@ Common fields used by UI:
 Optional fields supported:
 - `district_no`
 - `polling_stations`
+
+### 4) Polling Stations CSV (AC-level)
+`public/data/states/<code>/polling-stations/<acCode>/polling_stations.csv` (Tamil)
+`public/data/states/<code>/polling-stations/<acCode>/polling_stations_en.csv` (English)
+
+Fields used by UI:
+- `serial_no`
+- `polling_station_no`
+- `polling_station_location`
+- `section`
+- `parts_covered`
+- `all_voters_covered`
 
 ## Currently Added States
 - `tn` (Tamil Nadu)
@@ -131,6 +150,8 @@ npm run lint
 - `/as/data`
 - `/wb/data`
 - `/wb/data/COOCHBEHAR` (district drilldown example)
+- `/tn/data/Cuddalore/ac154/ps/ta` (Tamil polling stations view)
+- `/tn/data/Cuddalore/ac154/ps/en` (English polling stations view)
 
 ## Add a New State
 1. Add entry in `public/data/states.json`
@@ -140,6 +161,8 @@ npm run lint
 5. Verify:
    - `/<code>/data`
    - `/<code>/data/<district>`
+   - `/<code>/data/<district>/ac<acNo>/ps/ta`
+   - `/<code>/data/<district>/ac<acNo>/ps/en`
 6. Run:
    - `npm run lint`
    - `npm run build`
@@ -152,6 +175,11 @@ npm run lint
 
 - District route opens NotFound:
   - District name in URL must exist in that state CSV
+
+- Polling station route opens NotFound:
+  - Confirm AC exists under the district in `electors.csv`
+  - Confirm files exist under `public/data/states/<code>/polling-stations/ac<acNo>/`
+  - CSV must include required polling station headers (including `section`)
 
 - Scraper fails on PDF:
   - Ensure `pdftotext` is installed and available in PATH
