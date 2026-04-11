@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as StateMapRouteImport } from './routes/$state/map'
 import { Route as StateDataIndexRouteImport } from './routes/$state/data/index'
 import { Route as StateDataDistrictRouteImport } from './routes/$state/data/$district'
+import { Route as StateDataDistrictAcCodePsLangRouteImport } from './routes/$state/data/$district/$acCode/ps/$lang'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -34,43 +35,63 @@ const StateDataDistrictRoute = StateDataDistrictRouteImport.update({
   path: '/$state/data/$district',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StateDataDistrictAcCodePsLangRoute =
+  StateDataDistrictAcCodePsLangRouteImport.update({
+    id: '/$acCode/ps/$lang',
+    path: '/$acCode/ps/$lang',
+    getParentRoute: () => StateDataDistrictRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$state/map': typeof StateMapRoute
-  '/$state/data/$district': typeof StateDataDistrictRoute
+  '/$state/data/$district': typeof StateDataDistrictRouteWithChildren
   '/$state/data/': typeof StateDataIndexRoute
+  '/$state/data/$district/$acCode/ps/$lang': typeof StateDataDistrictAcCodePsLangRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$state/map': typeof StateMapRoute
-  '/$state/data/$district': typeof StateDataDistrictRoute
+  '/$state/data/$district': typeof StateDataDistrictRouteWithChildren
   '/$state/data': typeof StateDataIndexRoute
+  '/$state/data/$district/$acCode/ps/$lang': typeof StateDataDistrictAcCodePsLangRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$state/map': typeof StateMapRoute
-  '/$state/data/$district': typeof StateDataDistrictRoute
+  '/$state/data/$district': typeof StateDataDistrictRouteWithChildren
   '/$state/data/': typeof StateDataIndexRoute
+  '/$state/data/$district/$acCode/ps/$lang': typeof StateDataDistrictAcCodePsLangRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/$state/map' | '/$state/data/$district' | '/$state/data/'
+  fullPaths:
+    | '/'
+    | '/$state/map'
+    | '/$state/data/$district'
+    | '/$state/data/'
+    | '/$state/data/$district/$acCode/ps/$lang'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$state/map' | '/$state/data/$district' | '/$state/data'
+  to:
+    | '/'
+    | '/$state/map'
+    | '/$state/data/$district'
+    | '/$state/data'
+    | '/$state/data/$district/$acCode/ps/$lang'
   id:
     | '__root__'
     | '/'
     | '/$state/map'
     | '/$state/data/$district'
     | '/$state/data/'
+    | '/$state/data/$district/$acCode/ps/$lang'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   StateMapRoute: typeof StateMapRoute
-  StateDataDistrictRoute: typeof StateDataDistrictRoute
+  StateDataDistrictRoute: typeof StateDataDistrictRouteWithChildren
   StateDataIndexRoute: typeof StateDataIndexRoute
 }
 
@@ -104,13 +125,31 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StateDataDistrictRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$state/data/$district/$acCode/ps/$lang': {
+      id: '/$state/data/$district/$acCode/ps/$lang'
+      path: '/$acCode/ps/$lang'
+      fullPath: '/$state/data/$district/$acCode/ps/$lang'
+      preLoaderRoute: typeof StateDataDistrictAcCodePsLangRouteImport
+      parentRoute: typeof StateDataDistrictRoute
+    }
   }
 }
+
+interface StateDataDistrictRouteChildren {
+  StateDataDistrictAcCodePsLangRoute: typeof StateDataDistrictAcCodePsLangRoute
+}
+
+const StateDataDistrictRouteChildren: StateDataDistrictRouteChildren = {
+  StateDataDistrictAcCodePsLangRoute: StateDataDistrictAcCodePsLangRoute,
+}
+
+const StateDataDistrictRouteWithChildren =
+  StateDataDistrictRoute._addFileChildren(StateDataDistrictRouteChildren)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   StateMapRoute: StateMapRoute,
-  StateDataDistrictRoute: StateDataDistrictRoute,
+  StateDataDistrictRoute: StateDataDistrictRouteWithChildren,
   StateDataIndexRoute: StateDataIndexRoute,
 }
 export const routeTree = rootRouteImport
