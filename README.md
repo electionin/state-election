@@ -97,6 +97,7 @@ Fields used by UI:
 - `polling_station_location`
 - `section`
 - `parts_covered`
+- 'category'
 - `all_voters_covered`
 
 ## Currently Added States
