@@ -10,6 +10,7 @@ export type PollingStationCsvRow = {
   polling_station_location: string
   section: string
   parts_covered: string
+  category: string
   all_voters_covered: string
 }
 
@@ -27,6 +28,7 @@ function normalizePollingStationRow(row: Partial<PollingStationCsvRow>): Polling
   const location = normalizeText(row.polling_station_location)
   const section = normalizeText(row.section)
   const partsCovered = normalizeText(row.parts_covered)
+  const category = normalizeText(row.category)
   const voterType = normalizeText(row.all_voters_covered)
 
   // Recover from shifted rows where polling_station_no is missing in CSV:
@@ -38,6 +40,7 @@ function normalizePollingStationRow(row: Partial<PollingStationCsvRow>): Polling
       polling_station_location: pollingStationNo,
       section: '',
       parts_covered: location,
+      category: '',
       all_voters_covered: partsCovered,
     }
   }
@@ -52,6 +55,7 @@ function normalizePollingStationRow(row: Partial<PollingStationCsvRow>): Polling
       polling_station_location: pollingStationNo,
       section: '',
       parts_covered: location,
+      category: '',
       all_voters_covered: section,
     }
   }
@@ -62,6 +66,7 @@ function normalizePollingStationRow(row: Partial<PollingStationCsvRow>): Polling
     polling_station_location: location,
     section,
     parts_covered: partsCovered,
+    category,
     all_voters_covered: voterType,
   }
 }

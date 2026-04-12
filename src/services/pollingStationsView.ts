@@ -22,6 +22,33 @@ export type PollingStationCountGroup = {
   sections: PollingStationSectionGroup[]
 }
 
+export type PollingStationCategoryGroup = {
+  category: string
+  rows: PollingStationCsvRow[]
+}
+
+export function groupPollingStationsByCategory(rows: PollingStationCsvRow[]): PollingStationCategoryGroup[] {
+  const groups = new Map<string, PollingStationCsvRow[]>()
+
+  for (const row of rows) {
+    const category = (row.category ?? '').trim() || 'Uncategorized'
+    const existing = groups.get(category)
+    if (existing) {
+      existing.push(row)
+    } else {
+      groups.set(category, [row])
+    }
+  }
+
+  return Array.from(groups.entries())
+    .sort(([a], [b]) => {
+      if (a === 'Uncategorized') return 1
+      if (b === 'Uncategorized') return -1
+      return Number(a) - Number(b)
+    })
+    .map(([category, groupedRows]) => ({ category, rows: groupedRows }))
+}
+
 export function groupPollingStationsBySection(rows: PollingStationCsvRow[]): PollingStationSectionGroup[] {
   const groups = new Map<string, PollingStationCsvRow[]>()
 
@@ -80,6 +107,7 @@ export function filterAndSortPollingStations(
           const searchable = [
             row.polling_station_no ?? '',
             row.polling_station_location ?? '',
+            row.category ?? '',
             row.section ?? '',
             row.parts_covered ?? '',
           ]

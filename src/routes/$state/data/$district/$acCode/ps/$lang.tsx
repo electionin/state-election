@@ -11,10 +11,12 @@ import {
 } from '../../../../../../services/pollingStations'
 import {
   filterAndSortPollingStations,
+  groupPollingStationsByCategory,
   groupPollingStationsBySection,
   groupSectionsByPollingStationCount,
   splitPartsCovered,
 } from '../../../../../../services/pollingStationsView'
+import { downloadCategoryReportPdf } from '../../../../../../services/pollingStationReport'
 
 type LoaderData = {
   stateId: string
@@ -72,22 +74,40 @@ export const Route = createFileRoute('/$state/data/$district/$acCode/ps/$lang')(
 function PollingStationsPage() {
   const { stateId, district, acNo, acName, lang, rows } = Route.useLoaderData()
   const languageLabel = lang === 'en' ? 'English' : 'Tamil'
-  const parentGroupLabel = lang === 'en' ? 'Booth' : 'வாக்குச்சாவடி'
+  const boothLabel = lang === 'en' ? 'Booth' : 'வாக்குச்சாவடி'
   const [search, setSearch] = useState('')
   const [sectionSearch, setSectionSearch] = useState('')
   const filteredRows = useMemo(() => filterAndSortPollingStations(rows, search), [rows, search])
-  const sectionGroups = useMemo(() => groupPollingStationsBySection(filteredRows), [filteredRows])
-  const visibleSectionGroups = useMemo(() => {
+  const sectionFilteredRows = useMemo(() => {
     const query = sectionSearch.trim().toLowerCase()
-    if (!query) return sectionGroups
-    return sectionGroups.filter((group) => group.section.toLowerCase().includes(query))
-  }, [sectionGroups, sectionSearch])
-  const countGroups = useMemo(() => groupSectionsByPollingStationCount(visibleSectionGroups), [visibleSectionGroups])
-  const [collapsedSections, setCollapsedSections] = useState<string[]>(
-    () => groupPollingStationsBySection(rows).map((group) => group.section),
+    if (!query) return filteredRows
+    return filteredRows.filter((row) => row.section.toLowerCase().includes(query))
+  }, [filteredRows, sectionSearch])
+  const categoryGroups = useMemo(() => groupPollingStationsByCategory(sectionFilteredRows), [sectionFilteredRows])
+  const categoryCountGroups = useMemo(
+    () =>
+      categoryGroups.map((categoryGroup) => ({
+        category: categoryGroup.category,
+        countGroups: groupSectionsByPollingStationCount(groupPollingStationsBySection(categoryGroup.rows)),
+      })),
+    [categoryGroups],
   )
-  const [collapsedCountGroups, setCollapsedCountGroups] = useState<number[]>(
-    () => groupSectionsByPollingStationCount(groupPollingStationsBySection(rows)).map((group) => group.count),
+  const [collapsedCategories, setCollapsedCategories] = useState<string[]>(
+    () => groupPollingStationsByCategory(rows).map((group) => group.category),
+  )
+  const [collapsedSections, setCollapsedSections] = useState<string[]>(
+    () =>
+      groupPollingStationsByCategory(rows).flatMap((categoryGroup) =>
+        groupPollingStationsBySection(categoryGroup.rows).map((sectionGroup) => `${categoryGroup.category}::${sectionGroup.section}`),
+      ),
+  )
+  const [collapsedCountGroups, setCollapsedCountGroups] = useState<string[]>(
+    () =>
+      groupPollingStationsByCategory(rows).flatMap((categoryGroup) =>
+        groupSectionsByPollingStationCount(groupPollingStationsBySection(categoryGroup.rows)).map(
+          (countGroup) => `${categoryGroup.category}::${countGroup.count}`,
+        ),
+      ),
   )
   const [selectedSerialNo, setSelectedSerialNo] = useState<string>(rows[0]?.serial_no ?? '')
   const selectedRow = filteredRows.find((row) => row.serial_no === selectedSerialNo) ?? filteredRows[0] ?? null
@@ -102,8 +122,23 @@ function PollingStationsPage() {
     )
   }
 
-  const toggleCountGroup = (count: number) => {
-    setCollapsedCountGroups((prev) => (prev.includes(count) ? prev.filter((value) => value !== count) : [...prev, count]))
+  const toggleCountGroup = (countKey: string) => {
+    setCollapsedCountGroups((prev) =>
+      prev.includes(countKey) ? prev.filter((value) => value !== countKey) : [...prev, countKey],
+    )
+  }
+
+  const toggleCategory = (category: string) => {
+    setCollapsedCategories((prev) =>
+      prev.includes(category) ? prev.filter((name) => name !== category) : [...prev, category],
+    )
+  }
+
+  const getCategoryLabel = (category: string): string => {
+    if (category === '0') return 'General'
+    if (category === '1') return 'Colony'
+    if (category === 'Uncategorized') return 'Uncategorized'
+    return `Category ${category}`
   }
 
   return (
@@ -154,58 +189,107 @@ function PollingStationsPage() {
                       className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
                     />
                   </div>
-                  {countGroups.length === 0 ? (
+                  {categoryCountGroups.length === 0 ? (
                     <p className="p-4 text-sm text-slate-500">No sections found.</p>
                   ) : (
                     <ul className="divide-y divide-slate-100">
-                      {countGroups.map((countGroup) => {
-                        const parentCollapsed = collapsedCountGroups.includes(countGroup.count)
+                      {categoryCountGroups.map(({ category, countGroups }) => {
+                        const categoryCollapsed = collapsedCategories.includes(category)
+                        const categoryTotal = countGroups.reduce(
+                          (sum, countGroup) => sum + countGroup.sections.reduce((inner, section) => inner + section.rows.length, 0),
+                          0,
+                        )
+                        const categoryRows = countGroups.flatMap((countGroup) => countGroup.sections.flatMap((section) => section.rows))
                         return (
-                          <li key={countGroup.count} className="bg-white">
+                          <li key={category} className="bg-white">
                             <button
                               type="button"
-                              onClick={() => toggleCountGroup(countGroup.count)}
+                              onClick={() => toggleCategory(category)}
                               className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
                             >
-                              <span className="text-sm font-semibold text-slate-900">
-                                {countGroup.count} {parentGroupLabel} ({countGroup.sections.length})
+                              <span className="flex items-center gap-3 text-sm font-semibold text-slate-900">
+                                <span>
+                                  {getCategoryLabel(category)} ({categoryTotal})
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    downloadCategoryReportPdf({
+                                      stateId,
+                                      acNo,
+                                      acName,
+                                      lang,
+                                      categoryLabel: getCategoryLabel(category),
+                                      rows: categoryRows,
+                                    })
+                                  }}
+                                  className="text-xs font-medium text-blue-700 hover:text-blue-900 hover:underline"
+                                >
+                                  Get Report
+                                </button>
                               </span>
-                              <span className="text-xs text-slate-500">{parentCollapsed ? '▸' : '▾'}</span>
+                              <span className="text-xs text-slate-500">{categoryCollapsed ? '▸' : '▾'}</span>
                             </button>
-                            {!parentCollapsed && (
+                            {!categoryCollapsed && (
                               <ul className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/40">
-                                {countGroup.sections.map((group) => {
-                                  const sectionCollapsed = collapsedSections.includes(group.section)
+                                {countGroups.map((countGroup) => {
+                                  const countKey = `${category}::${countGroup.count}`
+                                  const countCollapsed = collapsedCountGroups.includes(countKey)
                                   return (
-                                    <li key={group.section} className="bg-white">
+                                    <li key={`${category}-${countGroup.count}`} className="bg-white">
                                       <button
                                         type="button"
-                                        onClick={() => toggleSection(group.section)}
+                                        onClick={() => toggleCountGroup(countKey)}
                                         className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
                                       >
                                         <span className="text-sm font-semibold text-slate-900">
-                                          {group.section} ({group.rows.length})
+                                          {countGroup.count} {boothLabel} ({countGroup.sections.length})
                                         </span>
-                                        <span className="text-xs text-slate-500">{sectionCollapsed ? '▸' : '▾'}</span>
+                                        <span className="text-xs text-slate-500">{countCollapsed ? '▸' : '▾'}</span>
                                       </button>
-                                      {!sectionCollapsed && (
+                                      {!countCollapsed && (
                                         <ul className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/30">
-                                          {group.rows.map((row) => {
-                                            const isSelected = selectedRow?.serial_no === row.serial_no
+                                          {countGroup.sections.map((group) => {
+                                            const sectionKey = `${category}::${group.section}`
+                                            const sectionCollapsed = collapsedSections.includes(sectionKey)
                                             return (
-                                              <li key={`${row.serial_no}-${row.polling_station_no}`}>
+                                              <li key={`${category}-${group.section}`} className="bg-white">
                                                 <button
                                                   type="button"
-                                                  onClick={() => onSelectStation(row.serial_no)}
-                                                  className={`w-full px-6 py-3 text-left transition ${
-                                                    isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
-                                                  }`}
+                                                  onClick={() => toggleSection(sectionKey)}
+                                                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
                                                 >
-                                                  <p className="text-sm font-semibold text-slate-900">PS {row.polling_station_no}</p>
-                                                  <p className="mt-1 line-clamp-2 text-sm text-slate-600">
-                                                    {row.polling_station_location}
-                                                  </p>
+                                                  <span className="text-sm font-semibold text-slate-900">
+                                                    {group.section} ({group.rows.length})
+                                                  </span>
+                                                  <span className="text-xs text-slate-500">{sectionCollapsed ? '▸' : '▾'}</span>
                                                 </button>
+                                                {!sectionCollapsed && (
+                                                  <ul className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/20">
+                                                    {group.rows.map((row) => {
+                                                      const isSelected = selectedRow?.serial_no === row.serial_no
+                                                      return (
+                                                        <li key={`${row.serial_no}-${row.polling_station_no}`}>
+                                                          <button
+                                                            type="button"
+                                                            onClick={() => onSelectStation(row.serial_no)}
+                                                            className={`w-full px-6 py-3 text-left transition ${
+                                                              isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
+                                                            }`}
+                                                          >
+                                                            <p className="text-sm font-semibold text-slate-900">
+                                                              PS {row.polling_station_no}
+                                                            </p>
+                                                            <p className="mt-1 line-clamp-2 text-sm text-slate-600">
+                                                              {row.polling_station_location}
+                                                            </p>
+                                                          </button>
+                                                        </li>
+                                                      )
+                                                    })}
+                                                  </ul>
+                                                )}
                                               </li>
                                             )
                                           })}

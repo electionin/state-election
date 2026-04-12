@@ -53,8 +53,8 @@ describe('fetchPollingStationCsvRows', () => {
       ok: true,
       text: async () =>
         [
-          'serial_no,polling_station_no,polling_station_location,section,parts_covered,all_voters_covered',
-          '1,1,"School A","Section A","1.Street A",All Voters',
+          'serial_no,polling_station_no,polling_station_location,section,parts_covered,category,all_voters_covered',
+          '1,1,"School A","Section A","1.Street A","1",All Voters',
         ].join('\n'),
     })
 
@@ -67,6 +67,7 @@ describe('fetchPollingStationCsvRows', () => {
         polling_station_location: 'School A',
         section: 'Section A',
         parts_covered: '1.Street A',
+        category: '1',
         all_voters_covered: 'All Voters',
       },
     ])
@@ -80,8 +81,8 @@ describe('fetchPollingStationCsvRows', () => {
       ok: true,
       text: async () =>
         [
-          'serial_no,polling_station_no,polling_station_location,section,parts_covered,all_voters_covered',
-          '121,121,"Location A","Section A","1.Part A; 2.Part B","அனைத்து வாக்காளர்கள்"',
+          'serial_no,polling_station_no,polling_station_location,section,parts_covered,category,all_voters_covered',
+          '121,121,"Location A","Section A","1.Part A; 2.Part B","2","அனைத்து வாக்காளர்கள்"',
           '122,"Location B","1.Part C; 2.Part D","அனைத்து வாக்காளர்கள்"',
         ].join('\n'),
     })
@@ -95,6 +96,7 @@ describe('fetchPollingStationCsvRows', () => {
         polling_station_location: 'Location A',
         section: 'Section A',
         parts_covered: '1.Part A; 2.Part B',
+        category: '2',
         all_voters_covered: 'அனைத்து வாக்காளர்கள்',
       },
       {
@@ -103,6 +105,7 @@ describe('fetchPollingStationCsvRows', () => {
         polling_station_location: 'Location B',
         section: '',
         parts_covered: '1.Part C; 2.Part D',
+        category: '',
         all_voters_covered: 'அனைத்து வாக்காளர்கள்',
       },
     ])
