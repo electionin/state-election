@@ -9,6 +9,9 @@ This app is designed to serve election elector summaries for various Indian stat
 - District-wise dashboard with sortable columns
 - District drilldown (`/:state/data/:district`) with AC-wise details
 - Polling station drilldown (`/:state/data/:district/:acCode/ps/:lang`) for AC-level TA/EN views
+- Polling station left-pane grouping by `Polling Stations`, `Voters`, `Vanniyar`, `SC`, `Minority`, `Female`
+- Polling station right-pane voter/community summary tables for selected station
+- Inline clear (`X`) actions in polling station search boxes
 - Header search by district name, AC name, and AC number
 - State switcher menu controlled by `show_in_menu`
 - Strict NotFound handling for invalid states/districts
@@ -97,8 +100,30 @@ Fields used by UI:
 - `polling_station_location`
 - `section`
 - `parts_covered`
-- 'category'
+- `category`
 - `all_voters_covered`
+- `male`
+- `female`
+- `third_gender`
+- `total`
+- `vanniyar`
+- `sc`
+- `minority`
+- `others`
+- `total_votes`
+
+Note:
+- English polling station rows are enriched with shared numeric/community fields from the Tamil CSV for the same AC, so grouping and summaries remain available in both `ta` and `en` views.
+
+## Polling Station Page Behavior
+- Left pane:
+  - Search by polling station number/location
+  - Section search
+  - Parent grouping controlled by radio options: `Polling Stations`, `Voters`, `Vanniyar`, `SC`, `Minority`, `Female`
+- Right pane:
+  - Parts covered list for selected station
+  - Voter summary table: `Male`, `Female`, `Third Gender`, `Total Votes`
+  - Community summary table: `Vanniyar`, `SC`, `Minority`, `Others`
 
 ## Currently Added States
 - `tn` (Tamil Nadu)
