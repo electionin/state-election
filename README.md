@@ -205,7 +205,7 @@ npm run lint
 - Polling station route opens NotFound:
   - Confirm AC exists under the district in `electors.csv`
   - Confirm files exist under `public/data/states/<code>/polling-stations/ac<acNo>/`
-  - CSV must include required polling station headers (including `section`)
+  - CSV must include required polling station headers (including `section` and vote counts)
 
 - Scraper fails on PDF:
   - Ensure `pdftotext` is installed and available in PATH
