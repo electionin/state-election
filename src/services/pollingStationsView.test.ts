@@ -14,6 +14,7 @@ function buildRow(overrides: Partial<PollingStationCsvRow>): PollingStationCsvRo
     polling_station_location: overrides.polling_station_location ?? '',
     section: overrides.section ?? '',
     parts_covered: overrides.parts_covered ?? '',
+    category: overrides.category ?? '',
     all_voters_covered: overrides.all_voters_covered ?? '',
     male: overrides.male ?? '',
     female: overrides.female ?? '',
