@@ -22,32 +22,7 @@ export type PollingStationCountGroup = {
   sections: PollingStationSectionGroup[]
 }
 
-export type PollingStationCategoryGroup = {
-  category: string
-  rows: PollingStationCsvRow[]
-}
-
-export function groupPollingStationsByCategory(rows: PollingStationCsvRow[]): PollingStationCategoryGroup[] {
-  const groups = new Map<string, PollingStationCsvRow[]>()
-
-  for (const row of rows) {
-    const category = (row.category ?? '').trim() || 'Uncategorized'
-    const existing = groups.get(category)
-    if (existing) {
-      existing.push(row)
-    } else {
-      groups.set(category, [row])
-    }
-  }
-
-  return Array.from(groups.entries())
-    .sort(([a], [b]) => {
-      if (a === 'Uncategorized') return 1
-      if (b === 'Uncategorized') return -1
-      return Number(a) - Number(b)
-    })
-    .map(([category, groupedRows]) => ({ category, rows: groupedRows }))
-}
+export type PollingStationGroupingMetric = 'pollingStations' | 'voters' | 'vanniyar' | 'sc' | 'minority' | 'female'
 
 export function groupPollingStationsBySection(rows: PollingStationCsvRow[]): PollingStationSectionGroup[] {
   const groups = new Map<string, PollingStationCsvRow[]>()
@@ -67,13 +42,14 @@ export function groupPollingStationsBySection(rows: PollingStationCsvRow[]): Pol
     .map(([section, groupedRows]) => ({ section, rows: groupedRows }))
 }
 
-export function groupSectionsByPollingStationCount(
+export function groupSectionsByMetric(
   sectionGroups: PollingStationSectionGroup[],
+  metric: PollingStationGroupingMetric,
 ): PollingStationCountGroup[] {
   const groups = new Map<number, PollingStationSectionGroup[]>()
 
   for (const sectionGroup of sectionGroups) {
-    const count = sectionGroup.rows.length
+    const count = getSectionGroupMetricValue(sectionGroup, metric)
     const existing = groups.get(count)
     if (existing) {
       existing.push(sectionGroup)
@@ -92,6 +68,31 @@ export function groupSectionsByPollingStationCount(
     }))
 }
 
+export function getSectionGroupMetricValue(
+  sectionGroup: PollingStationSectionGroup,
+  metric: PollingStationGroupingMetric,
+): number {
+  if (metric === 'pollingStations') return sectionGroup.rows.length
+
+  if (metric === 'voters') {
+    return sectionGroup.rows.reduce((sum, row) => sum + toInt(row.total), 0)
+  }
+
+  if (metric === 'vanniyar') {
+    return sectionGroup.rows.reduce((sum, row) => sum + toInt(row.vanniyar), 0)
+  }
+
+  if (metric === 'sc') {
+    return sectionGroup.rows.reduce((sum, row) => sum + toInt(row.sc), 0)
+  }
+
+  if (metric === 'minority') {
+    return sectionGroup.rows.reduce((sum, row) => sum + toInt(row.minority), 0)
+  }
+
+  return sectionGroup.rows.reduce((sum, row) => sum + toInt(row.female), 0)
+}
+
 export function filterAndSortPollingStations(
   rows: PollingStationCsvRow[],
   query: string,
@@ -107,7 +108,6 @@ export function filterAndSortPollingStations(
           const searchable = [
             row.polling_station_no ?? '',
             row.polling_station_location ?? '',
-            row.category ?? '',
             row.section ?? '',
             row.parts_covered ?? '',
           ]

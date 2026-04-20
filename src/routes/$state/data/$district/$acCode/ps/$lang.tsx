@@ -1,6 +1,6 @@
 import { Link, createFileRoute, notFound } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, X } from 'lucide-react'
 import { fetchStateConfig, stateExists } from '../../../../../../services/appConfig'
 import { fetchElectorCsvRows, toInt } from '../../../../../../services/electors'
 import {
@@ -11,12 +11,12 @@ import {
 } from '../../../../../../services/pollingStations'
 import {
   filterAndSortPollingStations,
-  groupPollingStationsByCategory,
+  getSectionGroupMetricValue,
+  type PollingStationGroupingMetric,
   groupPollingStationsBySection,
-  groupSectionsByPollingStationCount,
+  groupSectionsByMetric,
   splitPartsCovered,
 } from '../../../../../../services/pollingStationsView'
-import { downloadCategoryReportPdf } from '../../../../../../services/pollingStationReport'
 
 type LoaderData = {
   stateId: string
@@ -73,44 +73,50 @@ export const Route = createFileRoute('/$state/data/$district/$acCode/ps/$lang')(
 
 function PollingStationsPage() {
   const { stateId, district, acNo, acName, lang, rows } = Route.useLoaderData()
+  const isTamil = lang === 'ta'
   const languageLabel = lang === 'en' ? 'English' : 'Tamil'
-  const boothLabel = lang === 'en' ? 'Booth' : 'வாக்குச்சாவடி'
+  const groupingOptions: { value: PollingStationGroupingMetric; label: string; itemLabel: string }[] = [
+    { value: 'pollingStations', label: 'Polling Stations', itemLabel: 'Polling Stations' },
+    { value: 'voters', label: 'Voters', itemLabel: 'Voters' },
+    { value: 'vanniyar', label: 'Vanniyar', itemLabel: 'Vanniyar' },
+    { value: 'sc', label: 'SC', itemLabel: 'SC' },
+    { value: 'minority', label: 'Minority', itemLabel: 'Minority' },
+    { value: 'female', label: 'Female', itemLabel: 'Female' },
+  ]
   const [search, setSearch] = useState('')
   const [sectionSearch, setSectionSearch] = useState('')
+  const [groupingMetric, setGroupingMetric] = useState<PollingStationGroupingMetric>('pollingStations')
   const filteredRows = useMemo(() => filterAndSortPollingStations(rows, search), [rows, search])
-  const sectionFilteredRows = useMemo(() => {
+  const sectionGroups = useMemo(() => groupPollingStationsBySection(filteredRows), [filteredRows])
+  const visibleSectionGroups = useMemo(() => {
     const query = sectionSearch.trim().toLowerCase()
-    if (!query) return filteredRows
-    return filteredRows.filter((row) => row.section.toLowerCase().includes(query))
-  }, [filteredRows, sectionSearch])
-  const categoryGroups = useMemo(() => groupPollingStationsByCategory(sectionFilteredRows), [sectionFilteredRows])
-  const categoryCountGroups = useMemo(
-    () =>
-      categoryGroups.map((categoryGroup) => ({
-        category: categoryGroup.category,
-        countGroups: groupSectionsByPollingStationCount(groupPollingStationsBySection(categoryGroup.rows)),
-      })),
-    [categoryGroups],
-  )
-  const [collapsedCategories, setCollapsedCategories] = useState<string[]>(
-    () => groupPollingStationsByCategory(rows).map((group) => group.category),
+    if (!query) return sectionGroups
+    return sectionGroups.filter((group) => group.section.toLowerCase().includes(query))
+  }, [sectionGroups, sectionSearch])
+  const countGroups = useMemo(
+    () => groupSectionsByMetric(visibleSectionGroups, groupingMetric),
+    [visibleSectionGroups, groupingMetric],
   )
   const [collapsedSections, setCollapsedSections] = useState<string[]>(
-    () =>
-      groupPollingStationsByCategory(rows).flatMap((categoryGroup) =>
-        groupPollingStationsBySection(categoryGroup.rows).map((sectionGroup) => `${categoryGroup.category}::${sectionGroup.section}`),
-      ),
+    () => groupPollingStationsBySection(rows).map((group) => group.section),
   )
-  const [collapsedCountGroups, setCollapsedCountGroups] = useState<string[]>(
-    () =>
-      groupPollingStationsByCategory(rows).flatMap((categoryGroup) =>
-        groupSectionsByPollingStationCount(groupPollingStationsBySection(categoryGroup.rows)).map(
-          (countGroup) => `${categoryGroup.category}::${countGroup.count}`,
-        ),
-      ),
-  )
+  const [collapsedCountGroupsByMetric, setCollapsedCountGroupsByMetric] = useState<
+    Record<PollingStationGroupingMetric, number[]>
+  >(() => {
+    const allSectionGroups = groupPollingStationsBySection(rows)
+    return {
+      pollingStations: groupSectionsByMetric(allSectionGroups, 'pollingStations').map((group) => group.count),
+      voters: groupSectionsByMetric(allSectionGroups, 'voters').map((group) => group.count),
+      vanniyar: groupSectionsByMetric(allSectionGroups, 'vanniyar').map((group) => group.count),
+      sc: groupSectionsByMetric(allSectionGroups, 'sc').map((group) => group.count),
+      minority: groupSectionsByMetric(allSectionGroups, 'minority').map((group) => group.count),
+      female: groupSectionsByMetric(allSectionGroups, 'female').map((group) => group.count),
+    }
+  })
   const [selectedSerialNo, setSelectedSerialNo] = useState<string>(rows[0]?.serial_no ?? '')
   const selectedRow = filteredRows.find((row) => row.serial_no === selectedSerialNo) ?? filteredRows[0] ?? null
+  const selectedGroupingOption = groupingOptions.find((option) => option.value === groupingMetric) ?? groupingOptions[0]
+  const collapsedCountGroups = collapsedCountGroupsByMetric[groupingMetric] ?? []
 
   const onSelectStation = (serialNo: string) => {
     setSelectedSerialNo(serialNo)
@@ -122,23 +128,14 @@ function PollingStationsPage() {
     )
   }
 
-  const toggleCountGroup = (countKey: string) => {
-    setCollapsedCountGroups((prev) =>
-      prev.includes(countKey) ? prev.filter((value) => value !== countKey) : [...prev, countKey],
-    )
-  }
-
-  const toggleCategory = (category: string) => {
-    setCollapsedCategories((prev) =>
-      prev.includes(category) ? prev.filter((name) => name !== category) : [...prev, category],
-    )
-  }
-
-  const getCategoryLabel = (category: string): string => {
-    if (category === '0') return 'General'
-    if (category === '1') return 'Colony'
-    if (category === 'Uncategorized') return 'Uncategorized'
-    return `Category ${category}`
+  const toggleCountGroup = (count: number) => {
+    setCollapsedCountGroupsByMetric((prev) => {
+      const current = prev[groupingMetric] ?? []
+      return {
+        ...prev,
+        [groupingMetric]: current.includes(count) ? current.filter((value) => value !== count) : [...current, count],
+      }
+    })
   }
 
   return (
@@ -164,13 +161,47 @@ function PollingStationsPage() {
           <p className="text-sm text-slate-600">
             {filteredRows.length.toLocaleString('en-IN')} polling stations
           </p>
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search by station no. or location"
-            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 sm:max-w-sm"
-          />
+          <div className="relative w-full sm:max-w-sm">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by station no. or location"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+            />
+            {search ? (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              >
+                <X size={16} />
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Group Left Pane By</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {groupingOptions.map((option) => (
+              <label
+                key={option.value}
+                className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800"
+              >
+                <input
+                  type="radio"
+                  name="grouping-metric"
+                  value={option.value}
+                  checked={groupingMetric === option.value}
+                  onChange={() => setGroupingMetric(option.value)}
+                  className="h-4 w-4 border-slate-300 text-blue-600 focus:ring-blue-500"
+                />
+                <span>{option.label}</span>
+              </label>
+            ))}
+          </div>
         </div>
 
         <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-5">
@@ -181,115 +212,79 @@ function PollingStationsPage() {
               ) : (
                 <>
                   <div className="sticky top-0 z-10 border-b border-slate-200 bg-white p-3">
-                    <input
-                      type="text"
-                      value={sectionSearch}
-                      onChange={(e) => setSectionSearch(e.target.value)}
-                      placeholder="Search section name"
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={sectionSearch}
+                        onChange={(e) => setSectionSearch(e.target.value)}
+                        placeholder="Search section name"
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 pr-10 text-sm text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200"
+                      />
+                      {sectionSearch ? (
+                        <button
+                          type="button"
+                          onClick={() => setSectionSearch('')}
+                          aria-label="Clear section search"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                        >
+                          <X size={16} />
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                  {categoryCountGroups.length === 0 ? (
+                  {countGroups.length === 0 ? (
                     <p className="p-4 text-sm text-slate-500">No sections found.</p>
                   ) : (
                     <ul className="divide-y divide-slate-100">
-                      {categoryCountGroups.map(({ category, countGroups }) => {
-                        const categoryCollapsed = collapsedCategories.includes(category)
-                        const categoryTotal = countGroups.reduce(
-                          (sum, countGroup) => sum + countGroup.sections.reduce((inner, section) => inner + section.rows.length, 0),
-                          0,
-                        )
-                        const categoryRows = countGroups.flatMap((countGroup) => countGroup.sections.flatMap((section) => section.rows))
+                      {countGroups.map((countGroup) => {
+                        const parentCollapsed = collapsedCountGroups.includes(countGroup.count)
                         return (
-                          <li key={category} className="bg-white">
+                          <li key={countGroup.count} className="bg-white">
                             <button
                               type="button"
-                              onClick={() => toggleCategory(category)}
+                              onClick={() => toggleCountGroup(countGroup.count)}
                               className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
                             >
-                              <span className="flex items-center gap-3 text-sm font-semibold text-slate-900">
-                                <span>
-                                  {getCategoryLabel(category)} ({categoryTotal})
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    downloadCategoryReportPdf({
-                                      stateId,
-                                      acNo,
-                                      acName,
-                                      lang,
-                                      categoryLabel: getCategoryLabel(category),
-                                      rows: categoryRows,
-                                    })
-                                  }}
-                                  className="text-xs font-medium text-blue-700 hover:text-blue-900 hover:underline"
-                                >
-                                  Get Report
-                                </button>
+                              <span className="text-sm font-semibold text-slate-900">
+                                {countGroup.count.toLocaleString('en-IN')} {selectedGroupingOption.itemLabel} (
+                                {countGroup.sections.length})
                               </span>
-                              <span className="text-xs text-slate-500">{categoryCollapsed ? '▸' : '▾'}</span>
+                              <span className="text-xs text-slate-500">{parentCollapsed ? '▸' : '▾'}</span>
                             </button>
-                            {!categoryCollapsed && (
+                            {!parentCollapsed && (
                               <ul className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/40">
-                                {countGroups.map((countGroup) => {
-                                  const countKey = `${category}::${countGroup.count}`
-                                  const countCollapsed = collapsedCountGroups.includes(countKey)
+                                {countGroup.sections.map((group) => {
+                                  const sectionCollapsed = collapsedSections.includes(group.section)
                                   return (
-                                    <li key={`${category}-${countGroup.count}`} className="bg-white">
+                                    <li key={group.section} className="bg-white">
                                       <button
                                         type="button"
-                                        onClick={() => toggleCountGroup(countKey)}
+                                        onClick={() => toggleSection(group.section)}
                                         className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
                                       >
                                         <span className="text-sm font-semibold text-slate-900">
-                                          {countGroup.count} {boothLabel} ({countGroup.sections.length})
+                                          {group.section} ({getSectionGroupMetricValue(group, groupingMetric).toLocaleString('en-IN')})
                                         </span>
-                                        <span className="text-xs text-slate-500">{countCollapsed ? '▸' : '▾'}</span>
+                                        <span className="text-xs text-slate-500">{sectionCollapsed ? '▸' : '▾'}</span>
                                       </button>
-                                      {!countCollapsed && (
+                                      {!sectionCollapsed && (
                                         <ul className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/30">
-                                          {countGroup.sections.map((group) => {
-                                            const sectionKey = `${category}::${group.section}`
-                                            const sectionCollapsed = collapsedSections.includes(sectionKey)
+                                          {group.rows.map((row) => {
+                                            const isSelected = selectedRow?.serial_no === row.serial_no
                                             return (
-                                              <li key={`${category}-${group.section}`} className="bg-white">
+                                              <li key={`${row.serial_no}-${row.polling_station_no}`}>
                                                 <button
                                                   type="button"
-                                                  onClick={() => toggleSection(sectionKey)}
-                                                  className="flex w-full items-center justify-between px-4 py-3 text-left hover:bg-slate-50"
+                                                  onClick={() => onSelectStation(row.serial_no)}
+                                                  className={`w-full px-6 py-3 text-left transition ${
+                                                    isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
+                                                  }`}
                                                 >
-                                                  <span className="text-sm font-semibold text-slate-900">
-                                                    {group.section} ({group.rows.length})
-                                                  </span>
-                                                  <span className="text-xs text-slate-500">{sectionCollapsed ? '▸' : '▾'}</span>
+                                                  <p className="text-sm font-semibold text-slate-900">PS {row.polling_station_no}</p>
+                                                  <p className="mt-1 line-clamp-2 text-sm text-slate-600">
+                                                    {row.polling_station_location}
+                                                  </p>
                                                 </button>
-                                                {!sectionCollapsed && (
-                                                  <ul className="divide-y divide-slate-100 border-t border-slate-100 bg-slate-50/20">
-                                                    {group.rows.map((row) => {
-                                                      const isSelected = selectedRow?.serial_no === row.serial_no
-                                                      return (
-                                                        <li key={`${row.serial_no}-${row.polling_station_no}`}>
-                                                          <button
-                                                            type="button"
-                                                            onClick={() => onSelectStation(row.serial_no)}
-                                                            className={`w-full px-6 py-3 text-left transition ${
-                                                              isSelected ? 'bg-blue-50' : 'hover:bg-slate-50'
-                                                            }`}
-                                                          >
-                                                            <p className="text-sm font-semibold text-slate-900">
-                                                              PS {row.polling_station_no}
-                                                            </p>
-                                                            <p className="mt-1 line-clamp-2 text-sm text-slate-600">
-                                                              {row.polling_station_location}
-                                                            </p>
-                                                          </button>
-                                                        </li>
-                                                      )
-                                                    })}
-                                                  </ul>
-                                                )}
                                               </li>
                                             )
                                           })}
@@ -323,8 +318,86 @@ function PollingStationsPage() {
                     </ul>
                   </div>
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Voter Type</p>
-                    <p className="mt-1 text-sm text-slate-800">{selectedRow.all_voters_covered}</p>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Voter Summary</p>
+                    <div className="mt-2 overflow-hidden rounded-md border border-slate-200 bg-white">
+                      <table className="w-full text-sm">
+                        <tbody>
+                          <tr className="border-b border-slate-100">
+                            <th className="px-3 py-2 text-left font-medium text-slate-600">
+                              {isTamil ? 'ஆண்' : 'Male'}
+                            </th>
+                            <td className="px-3 py-2 text-right text-slate-900">
+                              {toInt(selectedRow.male).toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                          <tr className="border-b border-slate-100">
+                            <th className="px-3 py-2 text-left font-medium text-slate-600">
+                              {isTamil ? 'பெண்' : 'Female'}
+                            </th>
+                            <td className="px-3 py-2 text-right text-slate-900">
+                              {toInt(selectedRow.female).toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                          <tr className="border-b border-slate-100">
+                            <th className="px-3 py-2 text-left font-medium text-slate-600">
+                              {isTamil ? 'மூன்றாம் பாலினம்' : 'Third Gender'}
+                            </th>
+                            <td className="px-3 py-2 text-right text-slate-900">
+                              {toInt(selectedRow.third_gender).toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-slate-700">
+                              {isTamil ? 'மொத்த வாக்குகள்' : 'Total Votes'}
+                            </th>
+                            <td className="px-3 py-2 text-right font-semibold text-slate-900">
+                              {toInt(selectedRow.total).toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Community Summary</p>
+                    <div className="mt-2 overflow-hidden rounded-md border border-slate-200 bg-white">
+                      <table className="w-full text-sm">
+                        <tbody>
+                          <tr className="border-b border-slate-100">
+                            <th className="px-3 py-2 text-left font-medium text-slate-600">
+                              {isTamil ? 'வன்னியர்' : 'Vanniyar'}
+                            </th>
+                            <td className="px-3 py-2 text-right text-slate-900">
+                              {toInt(selectedRow.vanniyar).toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                          <tr className="border-b border-slate-100">
+                            <th className="px-3 py-2 text-left font-medium text-slate-600">
+                              {isTamil ? 'ஆதிதிராவிடர்' : 'SC'}
+                            </th>
+                            <td className="px-3 py-2 text-right text-slate-900">
+                              {toInt(selectedRow.sc).toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                          <tr className="border-b border-slate-100">
+                            <th className="px-3 py-2 text-left font-medium text-slate-600">
+                              {isTamil ? 'சிறுபான்மை' : 'Minority'}
+                            </th>
+                            <td className="px-3 py-2 text-right text-slate-900">
+                              {toInt(selectedRow.minority).toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                          <tr>
+                            <th className="px-3 py-2 text-left font-medium text-slate-600">
+                              {isTamil ? 'மற்றவர்கள்' : 'Others'}
+                            </th>
+                            <td className="px-3 py-2 text-right text-slate-900">
+                              {toInt(selectedRow.others).toLocaleString('en-IN')}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               ) : (
