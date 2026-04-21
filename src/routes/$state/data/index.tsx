@@ -2,9 +2,12 @@ import { Link, createFileRoute, notFound } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { fetchStateConfig, stateExists, type AppConfig } from '../../../services/appConfig'
 import { fetchElectorCsvRows, toInt, type ElectorCsvRow } from '../../../services/electors'
+import { fetchAcDetailsPayload } from '../../../services/acDetails'
 
 type DistrictSummary = {
   district: string
+  districtNo: number
+  districtTa?: string
   acCount: number
   male: number
   female: number
@@ -19,7 +22,7 @@ type LoaderData = { config: AppConfig; districts: DistrictSummary[] }
 function aggregateDistrictData(rows: ElectorCsvRow[]): DistrictSummary[] {
   const districtMap = new Map<
     string,
-    { acNos: Set<string>; male: number; female: number; thirdGender: number; totalVoters: number }
+    { districtNo: number; acNos: Set<string>; male: number; female: number; thirdGender: number; totalVoters: number }
   >()
 
   for (const row of rows) {
@@ -27,6 +30,7 @@ function aggregateDistrictData(rows: ElectorCsvRow[]): DistrictSummary[] {
     if (!district) continue
 
     const record = districtMap.get(district) ?? {
+      districtNo: toInt(row.district_no),
       acNos: new Set<string>(),
       male: 0,
       female: 0,
@@ -44,6 +48,7 @@ function aggregateDistrictData(rows: ElectorCsvRow[]): DistrictSummary[] {
   return Array.from(districtMap.entries())
     .map(([district, record]) => ({
       district,
+      districtNo: record.districtNo,
       acCount: record.acNos.size,
       male: record.male,
       female: record.female,
@@ -60,7 +65,61 @@ export const Route = createFileRoute('/$state/data/')({
     }
     const config = await fetchStateConfig(params.state)
     const rows = await fetchElectorCsvRows(config.elector_csv_path)
-    return { config, districts: aggregateDistrictData(rows) } satisfies LoaderData
+    const districts = aggregateDistrictData(rows)
+
+    try {
+      const payload = await fetchAcDetailsPayload(params.state)
+      const districtByCode = new Map(payload.districts?.map((d) => [d.dcode, d]) ?? [])
+      const byDistrictName = new Map(districts.map((d) => [d.district.trim().toLowerCase(), d]))
+
+      const metricsByDistrict = new Map<
+        string,
+        { acCount: number; male: number; female: number; thirdGender: number; totalVoters: number; districtTa?: string }
+      >()
+
+      for (const ac of payload.acs ?? []) {
+        const district = districtByCode.get(ac.dcode)
+        if (!district) continue
+        const key = district.name_en.trim().toLowerCase()
+        const existing = metricsByDistrict.get(key) ?? {
+          acCount: 0,
+          male: 0,
+          female: 0,
+          thirdGender: 0,
+          totalVoters: 0,
+          districtTa: district.name_ta,
+        }
+        existing.acCount += 1
+        existing.male += ac.male_voters
+        existing.female += ac.female_voters
+        existing.thirdGender += ac.thirdgender_voters
+        existing.totalVoters += ac.total_voters
+        if (!existing.districtTa) existing.districtTa = district.name_ta
+        metricsByDistrict.set(key, existing)
+      }
+
+      for (const [key, metrics] of metricsByDistrict.entries()) {
+        const row = byDistrictName.get(key)
+        if (!row) continue
+        row.acCount = metrics.acCount
+        row.male = metrics.male
+        row.female = metrics.female
+        row.thirdGender = metrics.thirdGender
+        row.totalVoters = metrics.totalVoters
+        row.districtTa = metrics.districtTa
+      }
+
+      for (const row of districts) {
+        const district = districtByCode.get(row.districtNo)
+        if (district?.name_ta) {
+          row.districtTa = district.name_ta
+        }
+      }
+    } catch {
+      // Keep CSV aggregates when DB-backed payload is unavailable.
+    }
+
+    return { config, districts } satisfies LoaderData
   },
   component: DataDashboard,
 })
@@ -68,6 +127,7 @@ export const Route = createFileRoute('/$state/data/')({
 function DataDashboard() {
   const { config, districts } = Route.useLoaderData()
   const state = config.state_id
+  const [lang, setLang] = useState<'ta' | 'en'>('en')
   const [sortColumn, setSortColumn] = useState<SortColumn>('district')
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc')
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([])
@@ -115,27 +175,65 @@ function DataDashboard() {
   }
   const allSelected = selectedDistricts.length === districts.length && districts.length > 0
   const toggleSelectAll = () => setSelectedDistricts(allSelected ? [] : districts.map((d) => d.district))
+  const labels =
+    lang === 'ta'
+      ? {
+          stateTitle: state === 'tn' ? 'தமிழ்நாடு' : config.state_name,
+          subtitle: 'மாவட்ட வாரியாக வாக்காளர் விவரங்கள்',
+          districts: selectedDistricts.length > 0 ? 'மாவட்டங்கள் (தேர்வு)' : 'மாவட்டங்கள்',
+          acCount: 'சட்டமன்ற தொகுதிகள்',
+          male: 'ஆண்',
+          female: 'பெண்',
+          thirdGender: 'மூன்றாம் பாலினம்',
+          totalVoters: 'மொத்த வாக்குகள்',
+        }
+      : {
+          stateTitle: config.state_name,
+          subtitle: `Overview of ${config.district_label.toLowerCase()}-wise electors information`,
+          districts: selectedDistricts.length > 0 ? 'Districts (Selected)' : 'Districts',
+          acCount: `No. of ${config.ac_short_label}`,
+          male: 'Male',
+          female: 'Female',
+          thirdGender: 'Third Gender',
+          totalVoters: 'Total Voters',
+        }
 
   return (
     <section className="space-y-6 select-none caret-transparent">
-      <div className="space-y-1">
-        <h2 className="text-2xl font-bold text-slate-900">{config.state_name}</h2>
-        <p className="text-sm text-slate-600">
-          Overview of {config.district_label.toLowerCase()}-wise electors information
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h2 className="text-2xl font-bold text-slate-900">{labels.stateTitle}</h2>
+          <p className="text-sm text-slate-600">{labels.subtitle}</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setLang('ta')}
+            className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${lang === 'ta' ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
+          >
+            தமிழ்
+          </button>
+          <button
+            type="button"
+            onClick={() => setLang('en')}
+            className={`rounded-lg border px-3 py-1.5 text-sm font-medium ${lang === 'en' ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'}`}
+          >
+            English
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           className="lg:col-span-2"
-          label={selectedDistricts.length > 0 ? 'Districts (Selected)' : 'Districts'}
+          label={labels.districts}
           value={districtsForSummary.length.toLocaleString('en-IN')}
         />
-        <StatCard className="lg:col-span-2" label={`No. of ${config.ac_short_label}`} value={totalAc.toLocaleString('en-IN')} />
-        <StatCard label="Male" value={totalMale.toLocaleString('en-IN')} />
-        <StatCard label="Female" value={totalFemale.toLocaleString('en-IN')} />
-        <StatCard label="Third Gender" value={totalThirdGender.toLocaleString('en-IN')} />
-        <StatCard label="Total Voters" value={totalVoters.toLocaleString('en-IN')} />
+        <StatCard className="lg:col-span-2" label={labels.acCount} value={totalAc.toLocaleString('en-IN')} />
+        <StatCard label={labels.male} value={totalMale.toLocaleString('en-IN')} />
+        <StatCard label={labels.female} value={totalFemale.toLocaleString('en-IN')} />
+        <StatCard label={labels.thirdGender} value={totalThirdGender.toLocaleString('en-IN')} />
+        <StatCard label={labels.totalVoters} value={totalVoters.toLocaleString('en-IN')} />
       </div>
 
       <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
@@ -154,42 +252,42 @@ function DataDashboard() {
                 </th>
                 <SortableHeader
                   align="left"
-                  label={config.district_label}
+                  label={lang === 'ta' ? 'மாவட்டம்' : config.district_label}
                   active={sortColumn === 'district'}
                   direction={sortDirection}
                   onClick={() => handleSort('district')}
                 />
                 <SortableHeader
                   align="right"
-                  label={`No. of ${config.ac_short_label}`}
+                  label={labels.acCount}
                   active={sortColumn === 'acCount'}
                   direction={sortDirection}
                   onClick={() => handleSort('acCount')}
                 />
                 <SortableHeader
                   align="right"
-                  label="Male"
+                  label={labels.male}
                   active={sortColumn === 'male'}
                   direction={sortDirection}
                   onClick={() => handleSort('male')}
                 />
                 <SortableHeader
                   align="right"
-                  label="Female"
+                  label={labels.female}
                   active={sortColumn === 'female'}
                   direction={sortDirection}
                   onClick={() => handleSort('female')}
                 />
                 <SortableHeader
                   align="right"
-                  label="Third Gender"
+                  label={labels.thirdGender}
                   active={sortColumn === 'thirdGender'}
                   direction={sortDirection}
                   onClick={() => handleSort('thirdGender')}
                 />
                 <SortableHeader
                   align="right"
-                  label="Total Voters"
+                  label={labels.totalVoters}
                   active={sortColumn === 'totalVoters'}
                   direction={sortDirection}
                   onClick={() => handleSort('totalVoters')}
@@ -219,7 +317,7 @@ function DataDashboard() {
                       params={{ state, district: row.district }}
                       className="text-blue-700 hover:text-blue-900 hover:underline"
                     >
-                      {row.district}
+                      {lang === 'ta' ? row.districtTa || row.district : row.district}
                     </Link>
                   </td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.acCount.toLocaleString('en-IN')}</td>

@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as StateMapRouteImport } from './routes/$state/map'
 import { Route as StateDataIndexRouteImport } from './routes/$state/data/index'
 import { Route as StateDataDistrictRouteImport } from './routes/$state/data/$district'
+import { Route as StateDataDistrictAcCodeIndexRouteImport } from './routes/$state/data/$district/$acCode/index'
 import { Route as StateDataDistrictAcCodePsLangRouteImport } from './routes/$state/data/$district/$acCode/ps/$lang'
 
 const IndexRoute = IndexRouteImport.update({
@@ -35,6 +36,12 @@ const StateDataDistrictRoute = StateDataDistrictRouteImport.update({
   path: '/$state/data/$district',
   getParentRoute: () => rootRouteImport,
 } as any)
+const StateDataDistrictAcCodeIndexRoute =
+  StateDataDistrictAcCodeIndexRouteImport.update({
+    id: '/$acCode/',
+    path: '/$acCode/',
+    getParentRoute: () => StateDataDistrictRoute,
+  } as any)
 const StateDataDistrictAcCodePsLangRoute =
   StateDataDistrictAcCodePsLangRouteImport.update({
     id: '/$acCode/ps/$lang',
@@ -47,6 +54,7 @@ export interface FileRoutesByFullPath {
   '/$state/map': typeof StateMapRoute
   '/$state/data/$district': typeof StateDataDistrictRouteWithChildren
   '/$state/data/': typeof StateDataIndexRoute
+  '/$state/data/$district/$acCode/': typeof StateDataDistrictAcCodeIndexRoute
   '/$state/data/$district/$acCode/ps/$lang': typeof StateDataDistrictAcCodePsLangRoute
 }
 export interface FileRoutesByTo {
@@ -54,6 +62,7 @@ export interface FileRoutesByTo {
   '/$state/map': typeof StateMapRoute
   '/$state/data/$district': typeof StateDataDistrictRouteWithChildren
   '/$state/data': typeof StateDataIndexRoute
+  '/$state/data/$district/$acCode': typeof StateDataDistrictAcCodeIndexRoute
   '/$state/data/$district/$acCode/ps/$lang': typeof StateDataDistrictAcCodePsLangRoute
 }
 export interface FileRoutesById {
@@ -62,6 +71,7 @@ export interface FileRoutesById {
   '/$state/map': typeof StateMapRoute
   '/$state/data/$district': typeof StateDataDistrictRouteWithChildren
   '/$state/data/': typeof StateDataIndexRoute
+  '/$state/data/$district/$acCode/': typeof StateDataDistrictAcCodeIndexRoute
   '/$state/data/$district/$acCode/ps/$lang': typeof StateDataDistrictAcCodePsLangRoute
 }
 export interface FileRouteTypes {
@@ -71,6 +81,7 @@ export interface FileRouteTypes {
     | '/$state/map'
     | '/$state/data/$district'
     | '/$state/data/'
+    | '/$state/data/$district/$acCode/'
     | '/$state/data/$district/$acCode/ps/$lang'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -78,6 +89,7 @@ export interface FileRouteTypes {
     | '/$state/map'
     | '/$state/data/$district'
     | '/$state/data'
+    | '/$state/data/$district/$acCode'
     | '/$state/data/$district/$acCode/ps/$lang'
   id:
     | '__root__'
@@ -85,6 +97,7 @@ export interface FileRouteTypes {
     | '/$state/map'
     | '/$state/data/$district'
     | '/$state/data/'
+    | '/$state/data/$district/$acCode/'
     | '/$state/data/$district/$acCode/ps/$lang'
   fileRoutesById: FileRoutesById
 }
@@ -125,6 +138,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof StateDataDistrictRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$state/data/$district/$acCode/': {
+      id: '/$state/data/$district/$acCode/'
+      path: '/$acCode'
+      fullPath: '/$state/data/$district/$acCode/'
+      preLoaderRoute: typeof StateDataDistrictAcCodeIndexRouteImport
+      parentRoute: typeof StateDataDistrictRoute
+    }
     '/$state/data/$district/$acCode/ps/$lang': {
       id: '/$state/data/$district/$acCode/ps/$lang'
       path: '/$acCode/ps/$lang'
@@ -136,10 +156,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface StateDataDistrictRouteChildren {
+  StateDataDistrictAcCodeIndexRoute: typeof StateDataDistrictAcCodeIndexRoute
   StateDataDistrictAcCodePsLangRoute: typeof StateDataDistrictAcCodePsLangRoute
 }
 
 const StateDataDistrictRouteChildren: StateDataDistrictRouteChildren = {
+  StateDataDistrictAcCodeIndexRoute: StateDataDistrictAcCodeIndexRoute,
   StateDataDistrictAcCodePsLangRoute: StateDataDistrictAcCodePsLangRoute,
 }
 
