@@ -125,5 +125,5 @@ export function getCandidatePhotoUrl(stateId: string, candidate: AcCandidate): s
   if (!candidate.photo_file) return ''
   const state = normalizeStateId(stateId)
   if (!state) return ''
-  return `/data/states/${state}/candidate_photo/${encodeURIComponent(candidate.photo_file)}`
+  return `https://raw.githubusercontent.com/canabady/state-election-assets/main/${state}/candidate_photo/${encodeURIComponent(candidate.photo_file)}`
 }
