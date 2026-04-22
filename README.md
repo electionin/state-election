@@ -116,7 +116,7 @@ Note:
 - English polling station rows are enriched with shared numeric/community fields from the Tamil CSV for the same AC, so grouping and summaries remain available in both `ta` and `en` views.
 
 ### 4) Candidate details (AC-level)
-  * Create AC page for both EN and TA (photo assets from another repo)
+  * Create AC page for both EN and TA (photo assets from another repo in electionin)
 
 ## Polling Station Page Behavior
 - Left pane:
