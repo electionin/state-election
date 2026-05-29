@@ -1,6 +1,7 @@
 import { Link, createFileRoute, notFound } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { useMemo, useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { ArrowLeft, X } from 'lucide-react'
 import { fetchStateConfig, stateExists } from '../../../../../services/appConfig'
 import { fetchElectorCsvRows, toInt } from '../../../../../services/electors'
 import {
@@ -15,6 +16,7 @@ import {
   type AcDetail,
 } from '../../../../../services/acDetails'
 import { parseAcCode } from '../../../../../services/pollingStations'
+import { fetchAcResult, computePollingStationResults, type PollingStationResult } from '../../../../../services/resultData'
 
 type LoaderData = {
   stateId: string
@@ -22,6 +24,7 @@ type LoaderData = {
   acNo: number
   acName: string
   acDetail: AcDetail
+  psResults: PollingStationResult[]
 }
 
 type PageTab = 'contestants' | 'result'
@@ -47,19 +50,23 @@ export const Route = createFileRoute('/$state/data/$district/$acCode/')({
     const acDetail = findAcDetail(allAcDetails, params.acCode)
     if (!acDetail) throw notFound()
 
+    const resultData = await fetchAcResult(config.state_id, acNo)
+    const psResults = resultData ? computePollingStationResults(resultData) : []
+
     return {
       stateId: config.state_id,
       district: acRow.district_name,
       acNo,
       acName: acRow.ac_name,
       acDetail,
+      psResults,
     } satisfies LoaderData
   },
   component: AcDetailPage,
 })
 
 function AcDetailPage() {
-  const { stateId, district, acNo, acName, acDetail } = Route.useLoaderData()
+  const { stateId, district, acNo, acName, acDetail, psResults } = Route.useLoaderData()
   const [activeTab, setActiveTab] = useState<PageTab>('contestants')
   const [pageLang, setPageLang] = useState<PageLang>('ta')
 
@@ -76,6 +83,10 @@ function AcDetailPage() {
           party: 'கட்சி',
           resultBlank: 'முடிவு தகவல் பின்னர் புதுப்பிக்கப்படும்.',
           voteDetails: 'வாக்காளர் விவரங்கள்',
+          totalVotes: 'மொத்த வாக்குகள்',
+          votes: 'வாக்குகள்',
+          lead: 'முன்னிலை',
+          ps: 'வாக்குச்சாவடி',
         }
       : {
           titlePrefix: 'Assembly Constituency',
@@ -84,6 +95,10 @@ function AcDetailPage() {
           party: 'Party',
           resultBlank: 'Result data will be updated later.',
           voteDetails: 'Vote Details',
+          totalVotes: 'Total Votes',
+          votes: 'Votes',
+          lead: 'Lead',
+          ps: 'Polling Station',
         }
 
   const topCandidates = useMemo(() => {
@@ -175,6 +190,8 @@ function AcDetailPage() {
             />
           ))}
         </div>
+      ) : psResults.length > 0 ? (
+        <PollingStationResultsGrid psResults={psResults} labels={labels} />
       ) : (
         <div className="rounded-xl border border-slate-200 bg-white p-6">
           <p className="text-sm text-slate-600">{labels.resultBlank}</p>
@@ -270,4 +287,170 @@ function getAllianceBadgeClass(allianceTa: string): string {
   if (text.includes('நாம்தமிழர்')) return 'bg-blue-700'
   if (text.includes('த.வெ.க')) return 'bg-yellow-700'
   return 'bg-slate-700'
+}
+
+function getPartyColorClass(party: string): string {
+  const p = party.toLowerCase()
+  if (p.includes('dravida munnetra kazhagam') && !p.includes('anna')) return 'bg-red-800'
+  if (p.includes('anna dravida') || p.includes('aiadmk') || p.includes('admk')) return 'bg-green-700'
+  if (p.includes('naam tamilar') || p.includes('nam tamilar') || p.includes('ntk')) return 'bg-blue-700'
+  if (p.includes('bharatiya janata') || p.includes('bjp')) return 'bg-orange-600'
+  if (p.includes('indian national congress') || p.includes('inc') || p.includes('congress')) return 'bg-blue-500'
+  if (p.includes('communist party') || p.includes('cpm') || p.includes('cpi')) return 'bg-red-600'
+  return 'bg-amber-600'
+}
+
+type ResultLabels = {
+  totalVotes: string
+  votes: string
+  lead: string
+  ps: string
+}
+
+function PollingStationResultsGrid({
+  psResults,
+  labels,
+}: {
+  psResults: PollingStationResult[]
+  labels: ResultLabels
+}) {
+  const [selectedPs, setSelectedPs] = useState<PollingStationResult | null>(null)
+
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {psResults.map((ps) => (
+          <PollingStationCard key={ps.psNo} ps={ps} labels={labels} onOpen={() => setSelectedPs(ps)} />
+        ))}
+      </div>
+      {selectedPs && (
+        <PollingStationModal ps={selectedPs} labels={labels} onClose={() => setSelectedPs(null)} />
+      )}
+    </>
+  )
+}
+
+function PollingStationCard({
+  ps,
+  labels,
+  onOpen,
+}: {
+  ps: PollingStationResult
+  labels: ResultLabels
+  onOpen: () => void
+}) {
+  const lead = ps.candidates[0]
+  const leadColorClass = lead ? getPartyColorClass(lead.party) : 'bg-amber-600'
+
+  return (
+    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <button type="button" onClick={onOpen} className="w-full text-left">
+        <div className={`px-3 py-1.5 text-xs font-semibold text-white ${leadColorClass}`}>
+          {labels.ps} {ps.psNo}
+        </div>
+        <div className="p-3 space-y-2">
+          <p className="text-xs text-slate-500 leading-snug line-clamp-2">{ps.psName}</p>
+          {lead ? (
+            <div className="space-y-0.5">
+              <p className="text-sm font-bold text-slate-900 leading-tight">{lead.name}</p>
+              <p className="text-xs text-slate-500 truncate">{lead.party}</p>
+              <div className="flex items-center justify-between pt-1">
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white ${leadColorClass}`}>
+                  {labels.lead}
+                </span>
+                <span className="text-sm font-bold text-slate-800">{lead.votes.toLocaleString('en-IN')}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400">—</p>
+          )}
+          <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100">
+            <span>{labels.totalVotes}</span>
+            <span className="font-semibold text-slate-700">{ps.totalVotes.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+      </button>
+    </article>
+  )
+}
+
+function PollingStationModal({
+  ps,
+  labels,
+  onClose,
+}: {
+  ps: PollingStationResult
+  labels: ResultLabels
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full sm:max-w-md bg-white sm:rounded-2xl shadow-2xl flex flex-col max-h-[90dvh]">
+        <div className={`flex items-start justify-between px-4 py-3 rounded-t-2xl ${ps.candidates[0] ? getPartyColorClass(ps.candidates[0].party) : 'bg-amber-600'}`}>
+          <div>
+            <p className="text-xs font-semibold text-white/80">{labels.ps} {ps.psNo}</p>
+            <p className="text-sm font-bold text-white leading-snug mt-0.5">{ps.psName}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-3 mt-0.5 shrink-0 rounded-full p-1 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
+          <span className="text-xs text-slate-500">{labels.totalVotes}</span>
+          <span className="text-sm font-bold text-slate-800">{ps.totalVotes.toLocaleString('en-IN')}</span>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-4 space-y-3">
+          {ps.candidates.map((c, i) => {
+            const pct = ps.totalVotes > 0 ? (c.votes / ps.totalVotes) * 100 : 0
+            const barColor = getPartyColorClass(c.party)
+            return (
+              <div key={`${c.name}-${i}`} className={`rounded-xl border p-3 space-y-2 ${c.isLead ? 'border-slate-300 bg-slate-50' : 'border-slate-100 bg-white'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className={`text-sm leading-tight ${c.isLead ? 'font-bold text-slate-900' : 'font-medium text-slate-700'}`}>
+                      {c.name}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">{c.party}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-base font-bold text-slate-900">{c.votes.toLocaleString('en-IN')}</p>
+                    <p className="text-xs text-slate-400">{pct.toFixed(1)}%</p>
+                  </div>
+                </div>
+                <div className="h-2 w-full rounded-full bg-slate-200">
+                  <div
+                    className={`h-2 rounded-full ${barColor}`}
+                    style={{ width: `${Math.max(1, pct)}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
 }
