@@ -139,3 +139,49 @@ export async function fetchAcWinnerParty(stateId: string, acNo: number): Promise
   if (!data) return null
   return data.assembly_constituency.candidates.find((c) => c.winner)?.party ?? null
 }
+
+export type AcResultSummary = {
+  acNo: number
+  acName: string
+  districtName: string
+  winnerName: string | null
+  winnerParty: string | null
+  securedVotes: number | null
+  votePct: number | null
+  margin: number | null
+}
+
+export function getPartyRowBgClass(party: string): string {
+  const p = party.toLowerCase()
+  if (p.includes('dravida munnetra kazhagam') && !p.includes('anna')) return 'bg-red-100'
+  if (p.includes('anna dravida') || p.includes('aiadmk') || p.includes('admk')) return 'bg-green-100'
+  if (p.includes('naam tamilar') || p.includes('nam tamilar') || p.includes('ntk')) return 'bg-orange-100'
+  if (p.includes('tamilaga vettri') || p.includes('tamil vettri') || p.includes('tvk')) return 'bg-yellow-100'
+  if (p.includes('bharatiya janata') || p.includes('bjp')) return 'bg-orange-100'
+  if (p.includes('indian national congress') || p.includes('inc') || p.includes('congress')) return 'bg-blue-100'
+  if (p.includes('communist party') || p.includes('cpm') || p.includes('cpi')) return 'bg-red-100'
+  return 'bg-amber-50'
+}
+
+export async function fetchAllAcSummaries(stateId: string, acNos: number[]): Promise<AcResultSummary[]> {
+  const results = await Promise.allSettled(acNos.map((acNo) => fetchAcResult(stateId, acNo)))
+  return results
+    .map((result) => {
+      if (result.status !== 'fulfilled' || !result.value) return null
+      const data = result.value
+      const ac = data.assembly_constituency
+      const winner = ac.candidates.find((c) => c.winner)
+      const totalVotes = ac.stats.total_votes
+      return {
+        acNo: ac.ac_code,
+        acName: ac.ac_name,
+        districtName: data.district.district_name,
+        winnerName: winner?.name ?? null,
+        winnerParty: winner?.party ?? null,
+        securedVotes: winner?.total_secured_votes ?? null,
+        votePct: winner && totalVotes > 0 ? (winner.total_secured_votes * 100) / totalVotes : null,
+        margin: winner?.margin ?? null,
+      } satisfies AcResultSummary
+    })
+    .filter((s): s is AcResultSummary => s !== null)
+}

@@ -202,7 +202,16 @@ function DataDashboard() {
     <section className="space-y-6 select-none caret-transparent">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
-          <h2 className="text-2xl font-bold text-slate-900">{labels.stateTitle}</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-2xl font-bold text-slate-900">{labels.stateTitle}</h2>
+            <Link
+              to="/$state/data/result"
+              params={{ state }}
+              className="rounded-lg border border-emerald-600 bg-emerald-50 px-3 py-1 text-sm font-semibold text-emerald-800 hover:bg-emerald-100"
+            >
+              Results
+            </Link>
+          </div>
           <p className="text-sm text-slate-600">{labels.subtitle}</p>
         </div>
         <div className="flex items-center gap-2">
