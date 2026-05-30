@@ -121,3 +121,21 @@ export function computePollingStationResults(data: AcResultData): PollingStation
     }
   })
 }
+
+export function getPartyColorClass(party: string): string {
+  const p = party.toLowerCase()
+  if (p.includes('dravida munnetra kazhagam') && !p.includes('anna')) return 'bg-red-800'
+  if (p.includes('anna dravida') || p.includes('aiadmk') || p.includes('admk')) return 'bg-green-700'
+  if (p.includes('naam tamilar') || p.includes('nam tamilar') || p.includes('ntk')) return 'bg-orange-400'
+  if (p.includes('tamilaga vettri') || p.includes('tamil vettri') || p.includes('tvk')) return 'bg-yellow-500'
+  if (p.includes('bharatiya janata') || p.includes('bjp')) return 'bg-orange-600'
+  if (p.includes('indian national congress') || p.includes('inc') || p.includes('congress')) return 'bg-blue-500'
+  if (p.includes('communist party') || p.includes('cpm') || p.includes('cpi')) return 'bg-red-600'
+  return 'bg-amber-600'
+}
+
+export async function fetchAcWinnerParty(stateId: string, acNo: number): Promise<string | null> {
+  const data = await fetchAcResult(stateId, acNo)
+  if (!data) return null
+  return data.assembly_constituency.candidates.find((c) => c.winner)?.party ?? null
+}
