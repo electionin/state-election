@@ -1,5 +1,11 @@
 # State Election in India - 2026
 
+> **⚠ DISCLAIMER — EXPERIMENTAL FORK**
+>
+> This repository is an **experimental work-in-progress**. Data has not been fully validated and is likely to contain errors, omissions, and inaccuracies. **Do not copy, reproduce, cite, or reference any data or content from this fork for any purpose.** No warranty of correctness is made.
+>
+> Before using anything from this project, read the [Disclaimer](#disclaimer) section at the bottom of this file.
+
 A multi-state, data-driven election dashboard built with React + TanStack Router.
 
 This app is designed to serve election elector summaries for various Indian states using state-scoped routes and CSV datasets.
@@ -212,6 +218,18 @@ npm run lint
 
 - Scraper fails on PDF:
   - Ensure `pdftotext` is installed and available in PATH
+
+## Disclaimer
+
+This project is an **experimental fork** maintained for personal research and learning purposes only.
+
+- **Data accuracy is not guaranteed.** Elector counts, polling station details, candidate information, and result data have not been independently verified and may contain mistakes, missing entries, or outdated values.
+- **Do not rely on this data** for any electoral analysis, journalism, academic research, legal proceedings, or public communication.
+- **Do not copy or redistribute** any data, screenshots, or derived content from this repository. No license is granted for the data assets under `public/data/`.
+- The project code is provided under the MIT License (see below), but the data files are excluded from that grant.
+- The maintainer accepts no responsibility for decisions made based on information from this repository.
+
+If you need accurate election data, refer to the official Election Commission of India publications.
 
 ## License
 MIT License
