@@ -74,6 +74,7 @@ function ResultDashboard() {
           <table className="min-w-full text-sm">
             <thead className="bg-slate-100 text-slate-700">
               <tr>
+                <th className="w-10 px-4 py-3 text-right font-semibold text-slate-700">#</th>
                 <SortableHeader align="right" label="AC #" active={sortColumn === 'acNo'} direction={sortDirection} onClick={() => handleSort('acNo')} />
                 <SortableHeader align="left" label="Constituency" active={sortColumn === 'acName'} direction={sortDirection} onClick={() => handleSort('acName')} />
                 <SortableHeader align="left" label="District" active={sortColumn === 'district'} direction={sortDirection} onClick={() => handleSort('district')} />
@@ -84,11 +85,12 @@ function ResultDashboard() {
               </tr>
             </thead>
             <tbody>
-              {sorted.map((row) => {
+              {sorted.map((row, index) => {
                 const rowBg = row.winnerParty ? getPartyRowBgClass(row.winnerParty) : ''
                 const partyBadge = row.winnerParty ? getPartyColorClass(row.winnerParty) : 'bg-slate-500'
                 return (
                   <tr key={row.acNo} className={`border-t border-slate-100 ${rowBg}`}>
+                    <td className="px-4 py-2.5 text-right font-mono text-slate-400 text-xs">{index + 1}</td>
                     <td className="px-4 py-2.5 text-right font-mono text-slate-500">{row.acNo}</td>
                     <td className="px-4 py-2.5 font-medium text-slate-900">{row.acName}</td>
                     <td className="px-4 py-2.5 text-slate-700">{row.districtName}</td>
