@@ -163,6 +163,78 @@ export function getPartyRowBgClass(party: string): string {
   return 'bg-amber-50'
 }
 
+type Form21eCandidate = {
+  candidate_id: number
+  sl_no: number
+  name: string
+  party: string
+  symbol: string
+  total_secured_votes: number
+  evm_votes: number | null
+  postal_votes: number | null
+  winner: boolean
+  margin: number | null
+}
+
+type Form21eData = {
+  state: string
+  election_year: number
+  district: { district_id: number; district_name: string }
+  assembly_constituency: {
+    ac_code: number
+    ac_name: string
+    stats: {
+      male: number
+      female: number
+      third_gender: number
+      total_electors: number
+      total_polling_stations: number
+      valid_votes_polled: number
+      nota_votes: number | null
+      rejected_votes: number | null
+      tendered_votes: number | null
+    }
+    candidates: Form21eCandidate[]
+  }
+}
+
+async function fetchForm21eAcResult(stateId: string, acNo: number): Promise<Form21eData | null> {
+  const state = normalizeStateId(stateId)
+  if (!state || acNo <= 0) return null
+  const padded = acNo.toString().padStart(3, '0')
+  const path = `/data/states/${state}/form-21e/ac_json/AC${padded}.json`
+  try {
+    const response = await fetch(resolvePublicAssetPath(path, getAppBasePath()))
+    if (!response.ok) return null
+    return (await response.json()) as Form21eData
+  } catch {
+    return null
+  }
+}
+
+export async function fetchAllForm21eAcSummaries(stateId: string, acNos: number[]): Promise<AcResultSummary[]> {
+  const results = await Promise.allSettled(acNos.map((acNo) => fetchForm21eAcResult(stateId, acNo)))
+  return results
+    .map((result) => {
+      if (result.status !== 'fulfilled' || !result.value) return null
+      const data = result.value
+      const ac = data.assembly_constituency
+      const winner = ac.candidates.find((c) => c.winner)
+      const totalVotes = ac.stats.valid_votes_polled
+      return {
+        acNo: ac.ac_code,
+        acName: ac.ac_name,
+        districtName: data.district.district_name,
+        winnerName: winner?.name ?? null,
+        winnerParty: winner?.party ?? null,
+        securedVotes: winner?.total_secured_votes ?? null,
+        votePct: winner && totalVotes > 0 ? (winner.total_secured_votes * 100) / totalVotes : null,
+        margin: winner?.margin ?? null,
+      } satisfies AcResultSummary
+    })
+    .filter((s): s is AcResultSummary => s !== null)
+}
+
 export async function fetchAllAcSummaries(stateId: string, acNos: number[]): Promise<AcResultSummary[]> {
   const results = await Promise.allSettled(acNos.map((acNo) => fetchAcResult(stateId, acNo)))
   return results

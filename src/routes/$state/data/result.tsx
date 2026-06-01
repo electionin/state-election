@@ -2,7 +2,7 @@ import { Link, createFileRoute, notFound } from '@tanstack/react-router'
 import { useMemo, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import { fetchStateConfig, stateExists, type AppConfig } from '../../../services/appConfig'
-import { fetchAllAcSummaries, getPartyColorClass, getPartyRowBgClass, type AcResultSummary } from '../../../services/resultData'
+import { fetchAllForm21eAcSummaries, getPartyColorClass, getPartyRowBgClass, type AcResultSummary } from '../../../services/resultData'
 
 type SortColumn = 'acNo' | 'acName' | 'district' | 'winnerName' | 'winnerParty' | 'votePct' | 'margin'
 type SortDirection = 'asc' | 'desc'
@@ -16,7 +16,7 @@ export const Route = createFileRoute('/$state/data/result')({
       throw notFound()
     }
     const config = await fetchStateConfig(params.state)
-    const summaries = await fetchAllAcSummaries(config.state_id, AC_NOS)
+    const summaries = await fetchAllForm21eAcSummaries(config.state_id, AC_NOS)
     return { config, summaries } satisfies LoaderData
   },
   component: ResultDashboard,
