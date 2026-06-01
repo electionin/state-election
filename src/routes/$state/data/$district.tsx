@@ -4,6 +4,7 @@ import { ArrowLeft, MapPinned } from 'lucide-react'
 import { fetchStateConfig, stateExists, type AppConfig } from '../../../services/appConfig'
 import { fetchElectorCsvRows, toInt } from '../../../services/electors'
 import { buildTamilNaduConstituencyMapUrl, fetchAcDetailsPayload } from '../../../services/acDetails'
+import { fetchAcWinnerParty, getPartyColorClass } from '../../../services/resultData'
 
 type DistrictAcRow = {
   district: string
@@ -17,6 +18,7 @@ type DistrictAcRow = {
   female: number
   thirdGender: number
   totalVoters: number
+  winnerParty?: string
 }
 
 type LoaderData = { config: AppConfig; rows: DistrictAcRow[]; districtNameTa: string }
@@ -85,6 +87,15 @@ export const Route = createFileRoute('/$state/data/$district')({
     }
 
     if (rows.length === 0) throw notFound()
+
+    const winnerResults = await Promise.allSettled(
+      rows.map((row) => fetchAcWinnerParty(config.state_id, row.acNo)),
+    )
+    winnerResults.forEach((result, i) => {
+      if (result.status === 'fulfilled' && result.value) {
+        rows[i].winnerParty = result.value
+      }
+    })
 
     return { config, rows, districtNameTa } satisfies LoaderData
   },
@@ -187,7 +198,9 @@ function DistrictDetail() {
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {sortedRows.map((row, index) => {
-          const badgeClass = CARD_BADGE_COLORS[index % CARD_BADGE_COLORS.length]
+          const badgeClass = row.winnerParty
+            ? getPartyColorClass(row.winnerParty)
+            : CARD_BADGE_COLORS[index % CARD_BADGE_COLORS.length]
           const displayAcName = lang === 'ta' ? row.acNameTa || row.acName : row.acNameEn || row.acName
           const mapUrl = state === 'tn' ? buildTamilNaduConstituencyMapUrl(row.acNameEn || row.acName) : null
           return (

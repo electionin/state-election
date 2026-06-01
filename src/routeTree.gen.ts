@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as StateMapRouteImport } from './routes/$state/map'
 import { Route as StateDataIndexRouteImport } from './routes/$state/data/index'
+import { Route as StateDataResultRouteImport } from './routes/$state/data/result'
 import { Route as StateDataDistrictRouteImport } from './routes/$state/data/$district'
 import { Route as StateDataDistrictAcCodeIndexRouteImport } from './routes/$state/data/$district/$acCode/index'
 import { Route as StateDataDistrictAcCodePsLangRouteImport } from './routes/$state/data/$district/$acCode/ps/$lang'
@@ -29,6 +30,11 @@ const StateMapRoute = StateMapRouteImport.update({
 const StateDataIndexRoute = StateDataIndexRouteImport.update({
   id: '/$state/data/',
   path: '/$state/data/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const StateDataResultRoute = StateDataResultRouteImport.update({
+  id: '/$state/data/result',
+  path: '/$state/data/result',
   getParentRoute: () => rootRouteImport,
 } as any)
 const StateDataDistrictRoute = StateDataDistrictRouteImport.update({
@@ -53,6 +59,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$state/map': typeof StateMapRoute
   '/$state/data/$district': typeof StateDataDistrictRouteWithChildren
+  '/$state/data/result': typeof StateDataResultRoute
   '/$state/data/': typeof StateDataIndexRoute
   '/$state/data/$district/$acCode/': typeof StateDataDistrictAcCodeIndexRoute
   '/$state/data/$district/$acCode/ps/$lang': typeof StateDataDistrictAcCodePsLangRoute
@@ -61,6 +68,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/$state/map': typeof StateMapRoute
   '/$state/data/$district': typeof StateDataDistrictRouteWithChildren
+  '/$state/data/result': typeof StateDataResultRoute
   '/$state/data': typeof StateDataIndexRoute
   '/$state/data/$district/$acCode': typeof StateDataDistrictAcCodeIndexRoute
   '/$state/data/$district/$acCode/ps/$lang': typeof StateDataDistrictAcCodePsLangRoute
@@ -70,6 +78,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/$state/map': typeof StateMapRoute
   '/$state/data/$district': typeof StateDataDistrictRouteWithChildren
+  '/$state/data/result': typeof StateDataResultRoute
   '/$state/data/': typeof StateDataIndexRoute
   '/$state/data/$district/$acCode/': typeof StateDataDistrictAcCodeIndexRoute
   '/$state/data/$district/$acCode/ps/$lang': typeof StateDataDistrictAcCodePsLangRoute
@@ -80,6 +89,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$state/map'
     | '/$state/data/$district'
+    | '/$state/data/result'
     | '/$state/data/'
     | '/$state/data/$district/$acCode/'
     | '/$state/data/$district/$acCode/ps/$lang'
@@ -88,6 +98,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$state/map'
     | '/$state/data/$district'
+    | '/$state/data/result'
     | '/$state/data'
     | '/$state/data/$district/$acCode'
     | '/$state/data/$district/$acCode/ps/$lang'
@@ -96,6 +107,7 @@ export interface FileRouteTypes {
     | '/'
     | '/$state/map'
     | '/$state/data/$district'
+    | '/$state/data/result'
     | '/$state/data/'
     | '/$state/data/$district/$acCode/'
     | '/$state/data/$district/$acCode/ps/$lang'
@@ -105,6 +117,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   StateMapRoute: typeof StateMapRoute
   StateDataDistrictRoute: typeof StateDataDistrictRouteWithChildren
+  StateDataResultRoute: typeof StateDataResultRoute
   StateDataIndexRoute: typeof StateDataIndexRoute
 }
 
@@ -129,6 +142,13 @@ declare module '@tanstack/react-router' {
       path: '/$state/data'
       fullPath: '/$state/data/'
       preLoaderRoute: typeof StateDataIndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/$state/data/result': {
+      id: '/$state/data/result'
+      path: '/$state/data/result'
+      fullPath: '/$state/data/result'
+      preLoaderRoute: typeof StateDataResultRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/$state/data/$district': {
@@ -172,6 +192,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   StateMapRoute: StateMapRoute,
   StateDataDistrictRoute: StateDataDistrictRouteWithChildren,
+  StateDataResultRoute: StateDataResultRoute,
   StateDataIndexRoute: StateDataIndexRoute,
 }
 export const routeTree = rootRouteImport

@@ -1,6 +1,7 @@
 import { Link, createFileRoute, notFound } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
-import { ArrowLeft } from 'lucide-react'
+import { useMemo, useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
+import { ArrowLeft, X, Hash, TrendingDown, TrendingUp, ArrowUp, ArrowDown } from 'lucide-react'
 import { fetchStateConfig, stateExists } from '../../../../../services/appConfig'
 import { fetchElectorCsvRows, toInt } from '../../../../../services/electors'
 import {
@@ -15,6 +16,18 @@ import {
   type AcDetail,
 } from '../../../../../services/acDetails'
 import { parseAcCode } from '../../../../../services/pollingStations'
+import { fetchAcResult, computePollingStationResults, type PollingStationResult } from '../../../../../services/resultData'
+
+type CandidateResultInfo = {
+  name: string
+  party: string
+  totalSecuredVotes: number
+  winner: boolean
+  margin: number | null
+  securedVotes: { psNo: number; votes: number }[]
+}
+
+type ResultPs = { no: number; name: string; totalVotes: number }
 
 type LoaderData = {
   stateId: string
@@ -22,6 +35,10 @@ type LoaderData = {
   acNo: number
   acName: string
   acDetail: AcDetail
+  psResults: PollingStationResult[]
+  resultCandidates: CandidateResultInfo[]
+  resultTotalVotes: number
+  resultPollingStations: ResultPs[]
 }
 
 type PageTab = 'contestants' | 'result'
@@ -47,21 +64,57 @@ export const Route = createFileRoute('/$state/data/$district/$acCode/')({
     const acDetail = findAcDetail(allAcDetails, params.acCode)
     if (!acDetail) throw notFound()
 
+    const resultData = await fetchAcResult(config.state_id, acNo)
+    const psResults = resultData ? computePollingStationResults(resultData) : []
+    const resultCandidates: CandidateResultInfo[] = resultData
+      ? resultData.assembly_constituency.candidates.map((c) => ({
+          name: c.name,
+          party: c.party,
+          totalSecuredVotes: c.total_secured_votes,
+          winner: c.winner,
+          margin: c.margin,
+          securedVotes: c.secured_votes.map((sv) => ({ psNo: sv.polling_station_no, votes: sv.votes })),
+        }))
+      : []
+    const resultTotalVotes = resultData?.assembly_constituency.stats.total_votes ?? 0
+    const resultPollingStations: ResultPs[] = resultData
+      ? resultData.assembly_constituency.polling_stations.map((ps) => ({
+          no: ps.no,
+          name: ps.name,
+          totalVotes: ps.total_votes,
+        }))
+      : []
+
     return {
       stateId: config.state_id,
       district: acRow.district_name,
       acNo,
       acName: acRow.ac_name,
       acDetail,
+      psResults,
+      resultCandidates,
+      resultTotalVotes,
+      resultPollingStations,
     } satisfies LoaderData
   },
   component: AcDetailPage,
 })
 
+type ContestantWithResult = AcCandidate & {
+  photoUrl: string
+  symbolUrl: string
+  totalSecuredVotes: number | null
+  votePct: number | null
+  winner: boolean
+  margin: number | null
+  securedVotes: { psNo: number; votes: number }[]
+}
+
 function AcDetailPage() {
-  const { stateId, district, acNo, acName, acDetail } = Route.useLoaderData()
+  const { stateId, district, acNo, acName, acDetail, psResults, resultCandidates, resultTotalVotes, resultPollingStations } = Route.useLoaderData()
   const [activeTab, setActiveTab] = useState<PageTab>('contestants')
   const [pageLang, setPageLang] = useState<PageLang>('ta')
+  const [selectedContestant, setSelectedContestant] = useState<ContestantWithResult | null>(null)
 
   const mapUrl = buildTamilNaduConstituencyMapUrl(acDetail.name_en || acName)
   const rollMapUrl = buildTamilNaduAcRollMapUrl(acNo)
@@ -72,32 +125,68 @@ function AcDetailPage() {
       ? {
           titlePrefix: 'சட்டமன்ற தொகுதி',
           contestants: 'போட்டியாளர்கள்',
-          result: 'முடிவு',
+          result: 'பகுப்பாய்வு',
           party: 'கட்சி',
-          resultBlank: 'முடிவு தகவல் பின்னர் புதுப்பிக்கப்படும்.',
+          resultBlank: 'பகுப்பாய்வு தகவல் பின்னர் புதுப்பிக்கப்படும்.',
           voteDetails: 'வாக்காளர் விவரங்கள்',
+          totalVotes: 'மொத்த வாக்குகள்',
+          votes: 'வாக்குகள்',
+          lead: 'முன்னிலை',
+          ps: 'வாக்குச்சாவடி',
+          securedVotes: 'பெற்ற வாக்குகள்',
+          margin: 'வித்தியாசம்',
+          totalAcVoters: 'மொத்த வாக்காளர்கள் (தொகுதி)',
+          polledVotes: 'வாக்களித்தோர்',
         }
       : {
           titlePrefix: 'Assembly Constituency',
           contestants: 'Contestants',
-          result: 'Result',
+          result: 'Analysis',
           party: 'Party',
-          resultBlank: 'Result data will be updated later.',
+          resultBlank: 'Analysis data will be updated later.',
           voteDetails: 'Vote Details',
+          totalVotes: 'Total Votes',
+          votes: 'Votes',
+          lead: 'Lead',
+          ps: 'Polling Station',
+          securedVotes: 'Secured Votes',
+          margin: 'Margin',
+          totalAcVoters: 'Total Voters (AC)',
+          polledVotes: 'Polled Votes',
         }
 
+  const resultByName = useMemo(() => {
+    const map = new Map<string, CandidateResultInfo>()
+    for (const c of resultCandidates) {
+      map.set(c.name.trim().toLowerCase(), c)
+    }
+    return map
+  }, [resultCandidates])
+
   const topCandidates = useMemo(() => {
-    const candidates = [...acDetail.candidates]
+    return [...acDetail.candidates]
       .sort((a, b) => a.sl_no - b.sl_no)
-      .map((candidate) => ({
-        ...candidate,
-        photoUrl: getCandidatePhotoUrl(stateId, candidate),
-        symbolUrl: getElectionSymbolImageUrl(candidate.symbol_en),
-      }))
+      .map((candidate) => {
+        const key = (candidate.name_en ?? '').trim().toLowerCase()
+        const resultInfo = resultByName.get(key)
+        const votePct =
+          resultInfo && resultTotalVotes > 0
+            ? (resultInfo.totalSecuredVotes * 100) / resultTotalVotes
+            : null
+        return {
+          ...candidate,
+          photoUrl: getCandidatePhotoUrl(stateId, candidate),
+          symbolUrl: getElectionSymbolImageUrl(candidate.symbol_en),
+          totalSecuredVotes: resultInfo?.totalSecuredVotes ?? null,
+          votePct,
+          winner: resultInfo?.winner ?? false,
+          margin: resultInfo?.margin ?? null,
+          securedVotes: resultInfo?.securedVotes ?? [],
+        }
+      })
       .filter((candidate) => candidate.photoUrl)
       .slice(0, 4)
-    return candidates
-  }, [acDetail.candidates, stateId])
+  }, [acDetail.candidates, stateId, resultByName, resultTotalVotes])
 
   return (
     <section className="space-y-6 select-none caret-transparent">
@@ -165,16 +254,34 @@ function AcDetailPage() {
       </div>
 
       {activeTab === 'contestants' ? (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-          {topCandidates.map((candidate) => (
-            <CandidateCard
-              key={`${candidate.sl_no}-${candidate.name_en}`}
-              candidate={candidate}
-              partyLabel={labels.party}
+        <>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            {topCandidates.map((candidate) => (
+              <CandidateCard
+                key={`${candidate.sl_no}-${candidate.name_en}`}
+                candidate={candidate}
+                partyLabel={labels.party}
+                securedVotesLabel={labels.securedVotes}
+                marginLabel={labels.margin}
+                lang={pageLang}
+                onOpen={() => setSelectedContestant(candidate)}
+              />
+            ))}
+          </div>
+          {selectedContestant && (
+            <CandidateDetailModal
+              candidate={selectedContestant}
+              acTotalVoters={acDetail.total_voters}
+              resultTotalVotes={resultTotalVotes}
+              resultPollingStations={resultPollingStations}
+              labels={labels}
               lang={pageLang}
+              onClose={() => setSelectedContestant(null)}
             />
-          ))}
-        </div>
+          )}
+        </>
+      ) : psResults.length > 0 ? (
+        <PollingStationResultsGrid psResults={psResults} labels={labels} />
       ) : (
         <div className="rounded-xl border border-slate-200 bg-white p-6">
           <p className="text-sm text-slate-600">{labels.resultBlank}</p>
@@ -235,19 +342,31 @@ function VoteStatsCard({
 function CandidateCard({
   candidate,
   partyLabel,
+  securedVotesLabel,
+  marginLabel,
   lang,
+  onOpen,
 }: {
-  candidate: AcCandidate & { photoUrl: string; symbolUrl: string }
+  candidate: ContestantWithResult
   partyLabel: string
+  securedVotesLabel: string
+  marginLabel: string
   lang: PageLang
+  onOpen: () => void
 }) {
   const name = lang === 'ta' ? candidate.name_ta || candidate.name_en : candidate.name_en || candidate.name_ta
   const party = lang === 'ta' ? candidate.party_ta || candidate.party_en : candidate.party_en || candidate.party_ta
   const alliance = candidate.alliance_ta || '-'
   const badgeClass = getAllianceBadgeClass(alliance)
+  const borderClass = candidate.winner
+    ? `border-4 ${getPartyBorderClass(candidate.party_en ?? '')}`
+    : 'border border-slate-200'
 
   return (
-    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+    <article
+      className={`overflow-hidden rounded-xl bg-white shadow-sm cursor-pointer ${borderClass}`}
+      onClick={onOpen}
+    >
       <div className={`px-3 py-2 text-center text-xs font-bold tracking-wide text-white ${badgeClass}`}>{alliance}</div>
       <img src={candidate.photoUrl} alt={name} className="h-56 w-full object-cover bg-slate-100" />
       <div className="space-y-2 p-3">
@@ -258,6 +377,29 @@ function CandidateCard({
         ) : (
           <p className="text-center text-xs text-slate-500">{candidate.symbol_en || '-'}</p>
         )}
+        {candidate.totalSecuredVotes !== null && (
+          <div className="pt-1 border-t border-slate-100 space-y-1 text-center">
+            <p className={`font-bold text-slate-900 ${candidate.winner ? 'text-lg' : 'text-sm'}`}>
+              <span className="text-xs font-medium text-slate-500 mr-1">{securedVotesLabel}:</span>
+              {candidate.totalSecuredVotes.toLocaleString('en-IN')}
+              {candidate.votePct !== null && (
+                <span className="ml-1 text-xs font-medium text-slate-500">
+                  ({candidate.votePct.toFixed(1)}%)
+                </span>
+              )}
+            </p>
+            {candidate.winner && (
+              <div>
+                <p className="text-sm font-extrabold text-emerald-600 tracking-wide">WINNER</p>
+                {candidate.margin !== null && (
+                  <p className="text-xs font-medium text-emerald-700">
+                    ({marginLabel}: {candidate.margin.toLocaleString('en-IN')})
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </article>
   )
@@ -267,7 +409,362 @@ function getAllianceBadgeClass(allianceTa: string): string {
   const text = allianceTa.toLowerCase().replace(/\s+/g, '')
   if (text.includes('அஇஅதிமுக') || text.includes('அதிமுக')) return 'bg-green-700'
   if (text.startsWith('திமுக') || text.includes('தி.மு.க')) return 'bg-red-800'
-  if (text.includes('நாம்தமிழர்')) return 'bg-blue-700'
-  if (text.includes('த.வெ.க')) return 'bg-yellow-700'
+  if (text.includes('நாம்தமிழர்')) return 'bg-orange-400'
+  if (text.includes('த.வெ.க')) return 'bg-yellow-500'
   return 'bg-slate-700'
+}
+
+function getPartyBorderClass(party: string): string {
+  const p = party.toLowerCase()
+  if (p.includes('dravida munnetra kazhagam') && !p.includes('anna')) return 'border-red-800'
+  if (p.includes('anna dravida') || p.includes('aiadmk') || p.includes('admk')) return 'border-green-700'
+  if (p.includes('naam tamilar') || p.includes('nam tamilar') || p.includes('ntk')) return 'border-orange-400'
+  if (p.includes('tamilaga vettri') || p.includes('tamil vettri') || p.includes('tvk')) return 'border-yellow-500'
+  if (p.includes('bharatiya janata') || p.includes('bjp')) return 'border-orange-600'
+  if (p.includes('indian national congress') || p.includes('inc') || p.includes('congress')) return 'border-blue-500'
+  if (p.includes('communist party') || p.includes('cpm') || p.includes('cpi')) return 'border-red-600'
+  return 'border-amber-600'
+}
+
+function getPartyColorClass(party: string): string {
+  const p = party.toLowerCase()
+  if (p.includes('dravida munnetra kazhagam') && !p.includes('anna')) return 'bg-red-800'
+  if (p.includes('anna dravida') || p.includes('aiadmk') || p.includes('admk')) return 'bg-green-700'
+  if (p.includes('naam tamilar') || p.includes('nam tamilar') || p.includes('ntk')) return 'bg-orange-400'
+  if (p.includes('tamilaga vettri') || p.includes('tamil vettri') || p.includes('tvk')) return 'bg-yellow-500'
+  if (p.includes('bharatiya janata') || p.includes('bjp')) return 'bg-orange-600'
+  if (p.includes('indian national congress') || p.includes('inc') || p.includes('congress')) return 'bg-blue-500'
+  if (p.includes('communist party') || p.includes('cpm') || p.includes('cpi')) return 'bg-red-600'
+  return 'bg-amber-600'
+}
+
+type ResultLabels = {
+  totalVotes: string
+  votes: string
+  lead: string
+  ps: string
+}
+
+function PollingStationResultsGrid({
+  psResults,
+  labels,
+}: {
+  psResults: PollingStationResult[]
+  labels: ResultLabels
+}) {
+  const [selectedPs, setSelectedPs] = useState<PollingStationResult | null>(null)
+
+  return (
+    <>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {psResults.map((ps) => (
+          <PollingStationCard key={ps.psNo} ps={ps} labels={labels} onOpen={() => setSelectedPs(ps)} />
+        ))}
+      </div>
+      {selectedPs && (
+        <PollingStationModal ps={selectedPs} labels={labels} onClose={() => setSelectedPs(null)} />
+      )}
+    </>
+  )
+}
+
+function PollingStationCard({
+  ps,
+  labels,
+  onOpen,
+}: {
+  ps: PollingStationResult
+  labels: ResultLabels
+  onOpen: () => void
+}) {
+  const lead = ps.candidates[0]
+  const leadColorClass = lead ? getPartyColorClass(lead.party) : 'bg-amber-600'
+
+  return (
+    <article className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <button type="button" onClick={onOpen} className="w-full text-left">
+        <div className={`px-3 py-1.5 text-xs font-semibold text-white ${leadColorClass}`}>
+          {labels.ps} {ps.psNo}
+        </div>
+        <div className="p-3 space-y-2">
+          <p className="text-xs text-slate-500 leading-snug line-clamp-2">{ps.psName}</p>
+          {lead ? (
+            <div className="space-y-0.5">
+              <p className="text-sm font-bold text-slate-900 leading-tight">{lead.name}</p>
+              <p className="text-xs text-slate-500 truncate">{lead.party}</p>
+              <div className="flex items-center justify-between pt-1">
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold text-white ${leadColorClass}`}>
+                  {labels.lead}
+                </span>
+                <span className="text-sm font-bold text-slate-800">{lead.votes.toLocaleString('en-IN')}</span>
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-slate-400">—</p>
+          )}
+          <div className="flex items-center justify-between text-xs text-slate-500 pt-1 border-t border-slate-100">
+            <span>{labels.totalVotes}</span>
+            <span className="font-semibold text-slate-700">{ps.totalVotes.toLocaleString('en-IN')}</span>
+          </div>
+        </div>
+      </button>
+    </article>
+  )
+}
+
+function PollingStationModal({
+  ps,
+  labels,
+  onClose,
+}: {
+  ps: PollingStationResult
+  labels: ResultLabels
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full sm:max-w-md bg-white sm:rounded-2xl shadow-2xl flex flex-col max-h-[90dvh]">
+        <div className={`flex items-start justify-between px-4 py-3 rounded-t-2xl ${ps.candidates[0] ? getPartyColorClass(ps.candidates[0].party) : 'bg-amber-600'}`}>
+          <div>
+            <p className="text-xs font-semibold text-white/80">{labels.ps} {ps.psNo}</p>
+            <p className="text-sm font-bold text-white leading-snug mt-0.5">{ps.psName}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-3 mt-0.5 shrink-0 rounded-full p-1 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="px-4 py-2 border-b border-slate-100 flex items-center justify-between">
+          <span className="text-xs text-slate-500">{labels.totalVotes}</span>
+          <span className="text-sm font-bold text-slate-800">{ps.totalVotes.toLocaleString('en-IN')}</span>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-4 space-y-3">
+          {ps.candidates.map((c, i) => {
+            const pct = ps.totalVotes > 0 ? (c.votes / ps.totalVotes) * 100 : 0
+            const barColor = getPartyColorClass(c.party)
+            return (
+              <div key={`${c.name}-${i}`} className={`rounded-xl border p-3 space-y-2 ${c.isLead ? 'border-slate-300 bg-slate-50' : 'border-slate-100 bg-white'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className={`text-sm leading-tight ${c.isLead ? 'font-bold text-slate-900' : 'font-medium text-slate-700'}`}>
+                      {c.name}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">{c.party}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-base font-bold text-slate-900">{c.votes.toLocaleString('en-IN')}</p>
+                    <p className="text-xs text-slate-400">{pct.toFixed(1)}%</p>
+                  </div>
+                </div>
+                <div className="h-2 w-full rounded-full bg-slate-200">
+                  <div
+                    className={`h-2 rounded-full ${barColor}`}
+                    style={{ width: `${Math.max(1, pct)}%` }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
+type ContestantModalLabels = {
+  party: string
+  totalAcVoters: string
+  polledVotes: string
+  securedVotes: string
+  margin: string
+}
+
+function CandidateDetailModal({
+  candidate,
+  acTotalVoters,
+  resultTotalVotes,
+  resultPollingStations,
+  labels,
+  lang,
+  onClose,
+}: {
+  candidate: ContestantWithResult
+  acTotalVoters: number
+  resultTotalVotes: number
+  resultPollingStations: ResultPs[]
+  labels: ContestantModalLabels
+  lang: PageLang
+  onClose: () => void
+}) {
+  const [sortBy, setSortBy] = useState<'psNo' | 'pct'>('psNo')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc')
+
+  function handleSort(by: 'psNo' | 'pct') {
+    if (sortBy === by) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortBy(by)
+      setSortDir(by === 'psNo' ? 'asc' : 'desc')
+    }
+  }
+
+  useEffect(() => {
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [onClose])
+
+  const name = lang === 'ta' ? candidate.name_ta || candidate.name_en : candidate.name_en || candidate.name_ta
+  const party = lang === 'ta' ? candidate.party_ta || candidate.party_en : candidate.party_en || candidate.party_ta
+  const headerColor = getPartyColorClass(candidate.party_en ?? '')
+  const barColor = getPartyColorClass(candidate.party_en ?? '')
+  const votePct = candidate.votePct
+
+  const psMap = useMemo(() => {
+    const m = new Map<number, ResultPs>()
+    for (const ps of resultPollingStations) m.set(ps.no, ps)
+    return m
+  }, [resultPollingStations])
+
+  const psRows = useMemo(() => {
+    const rows = candidate.securedVotes.map((sv) => {
+      const ps = psMap.get(sv.psNo)
+      const pct = ps && ps.totalVotes > 0 ? (sv.votes / ps.totalVotes) * 100 : 0
+      return { psNo: sv.psNo, psName: ps?.name ?? '', votes: sv.votes, pct }
+    })
+    if (sortBy === 'pct') {
+      return [...rows].sort((a, b) => sortDir === 'desc' ? b.pct - a.pct : a.pct - b.pct)
+    }
+    return [...rows].sort((a, b) => sortDir === 'asc' ? a.psNo - b.psNo : b.psNo - a.psNo)
+  }, [candidate.securedVotes, psMap, sortBy, sortDir])
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-10 w-full sm:max-w-lg bg-white sm:rounded-2xl shadow-2xl flex flex-col max-h-[90dvh]">
+
+        {/* Header */}
+        <div className={`flex items-start justify-between px-4 py-3 sm:rounded-t-2xl ${headerColor}`}>
+          <div className="min-w-0">
+            <p className="text-base font-extrabold text-white leading-tight">{name}</p>
+            <p className="text-xs font-medium text-white/80 mt-0.5">{party}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="ml-3 shrink-0 rounded-full p-1 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Summary stats */}
+        <div className="grid grid-cols-3 divide-x divide-slate-100 border-b border-slate-100">
+          <div className="px-3 py-2 text-center">
+            <p className="text-xs text-slate-500">{labels.totalAcVoters}</p>
+            <p className="text-sm font-bold text-slate-800 mt-0.5">{acTotalVoters.toLocaleString('en-IN')}</p>
+          </div>
+          <div className="px-3 py-2 text-center">
+            <p className="text-xs text-slate-500">{labels.polledVotes}</p>
+            <p className="text-sm font-bold text-slate-800 mt-0.5">{resultTotalVotes.toLocaleString('en-IN')}</p>
+          </div>
+          <div className="px-3 py-2 text-center">
+            <p className="text-xs text-slate-500">{labels.securedVotes}</p>
+            <p className="text-sm font-bold text-slate-800 mt-0.5">
+              {(candidate.totalSecuredVotes ?? 0).toLocaleString('en-IN')}
+              {votePct !== null && <span className="text-xs font-medium text-slate-500 ml-1">({votePct.toFixed(1)}%)</span>}
+            </p>
+          </div>
+        </div>
+
+        {/* Winner badge */}
+        {candidate.winner && (
+          <div className="flex items-center gap-3 px-4 py-2 bg-emerald-50 border-b border-emerald-100">
+            <span className="text-sm font-extrabold text-emerald-600 tracking-wide">WINNER</span>
+            {candidate.margin !== null && (
+              <span className="text-xs text-emerald-700">({labels.margin}: {candidate.margin.toLocaleString('en-IN')})</span>
+            )}
+          </div>
+        )}
+
+        {/* Sort controls */}
+        <div className="flex items-center justify-end gap-1 px-4 py-2 border-b border-slate-100">
+          <button
+            type="button"
+            onClick={() => handleSort('psNo')}
+            title="Sort by polling station number"
+            className={`flex items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors ${sortBy === 'psNo' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+          >
+            <Hash size={12} />
+            {sortBy === 'psNo' && (sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleSort('pct')}
+            title="Sort by vote percentage"
+            className={`flex items-center gap-0.5 rounded-lg px-2 py-1.5 transition-colors ${sortBy === 'pct' ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+          >
+            {sortBy === 'pct' && sortDir === 'asc' ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+            {sortBy === 'pct' && (sortDir === 'asc' ? <ArrowUp size={10} /> : <ArrowDown size={10} />)}
+          </button>
+        </div>
+
+        {/* Per-PS list */}
+        <div className="overflow-y-auto flex-1 p-4 space-y-3">
+          {psRows.map((row) => (
+            <div key={row.psNo} className="rounded-xl border border-slate-100 bg-white p-3 space-y-2">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-slate-900 leading-tight">{row.psNo}</p>
+                  <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{row.psName}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-base font-bold text-slate-900">{row.votes.toLocaleString('en-IN')}</p>
+                  <p className="text-xs text-slate-400">{row.pct.toFixed(1)}%</p>
+                </div>
+              </div>
+              <div className="h-2 w-full rounded-full bg-slate-200">
+                <div
+                  className={`h-2 rounded-full ${barColor}`}
+                  style={{ width: `${Math.max(1, row.pct)}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
 }
